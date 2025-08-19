@@ -6,8 +6,13 @@ let qzReady = false;
 export async function ensureQZ() {
   if (!window.qz) throw new Error('QZ Tray no cargó');
   if (!qzReady || !window.qz.websocket.isActive()) {
-    await window.qz.websocket.connect();   // primera vez pedirá permisos
-    qzReady = true;
+    try {
+      await window.qz.websocket.connect();   // primera vez pedirá permisos
+      qzReady = true;
+    } catch (error) {
+      console.error('Error conectando con QZ Tray:', error);
+      throw new Error('No se pudo conectar con QZ Tray. Asegúrate de que esté instalado y ejecutándose.');
+    }
   }
 }
 

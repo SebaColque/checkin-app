@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             if (window.qz && window.qz.security) {
               // DEV: sin certificado ni firma; requiere "Allow unsigned" en QZ Tray
               window.qz.security.setCertificatePromise((resolve, reject) => resolve());
-              window.qz.security.setSignaturePromise(() => (resolve, reject) => resolve());
+              window.qz.security.setSignaturePromise((resolve, reject) => resolve());
             }
           `}</Script>
         {children}
