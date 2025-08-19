@@ -1,21 +1,56 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, Attendee } from './lib/supabase';
-import { printLabelHtml } from './lib/print';
+import { printLabelHtml, ensureQZ, listPrinters, getDefaultPrinter } from './lib/print';
 
 export default function Page() {
   const [q, setQ] = useState('');
-  const [rows, setRows] = useState<Attendee[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [allAttendees, setAllAttendees] = useState<Attendee[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Config local por notebook
-  const [station, setStation] = useState<string>(() => localStorage.getItem('station') || 'N1');
-  const [printer, setPrinter] = useState<string>(() => localStorage.getItem('printer') || 'Xprinter');
+  // 1) INIT seguro en SSR: nunca tocar localStorage en el render inicial
+  const [station, setStation] = useState<string>('N1');
+  const [printer, setPrinter] = useState<string>('');    // ← empieza vacío
+  const [printers, setPrinters] = useState<string[]>([]);
 
-  useEffect(() => { localStorage.setItem('station', station); }, [station]);
-  useEffect(() => { localStorage.setItem('printer', printer); }, [printer]);
+  // 2) Cargar valores de localStorage ya en el cliente
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setStation(localStorage.getItem('station') || 'N1');
+    setPrinter(localStorage.getItem('printer') || '');
+  }, []);
 
-  // Carga inicial y cada vez que cambia la búsqueda
+  // 3) Guardar cambios en localStorage sólo en cliente
+  // Guardar cambios
+  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('station', station); }, [station]);
+  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('printer', printer); }, [printer]);
+
+  // Detectar impresoras (y default) una vez
+  // Al montar: si no hay impresora guardada, intentá default
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureQZ();
+        // Cargar lista si existe el método, si no al menos default
+        const names = await listPrinters();
+        setPrinters(names);
+        if (!printer) {
+          const def = await getDefaultPrinter();
+          if (def) setPrinter(def);
+        }
+      } catch (e) {
+        console.warn('QZ no disponible aún', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const testPrint = async () => {
+    if (!printer) return alert('Elegí una impresora');
+    await printLabelHtml(printer, 'PRUEBA', 123);  // crea un PDF si usás “Print to PDF”
+  };
+
+  // Carga inicial de todos los participantes
   useEffect(() => {
     let abort = false;
     (async () => {
@@ -23,30 +58,62 @@ export default function Page() {
       const { data, error } = await supabase
         .from('attendees')
         .select('id, full_name, external_id, email, checked_in_at, ticket_no, station')
-        .ilike('full_name', `%${q}%`)
-        .order('full_name')
-        .limit(50);
+        .order('full_name');
+
       if (!abort) {
         if (error) console.error(error);
-        setRows(data || []);
+        setAllAttendees(data || []);
         setLoading(false);
       }
     })();
     return () => { abort = true; };
-  }, [q]);
+  }, []);
 
-  const pending = useMemo(() => rows.filter(r => !r.checked_in_at), [rows]);
+  // Filtrado en tiempo real usando useMemo
+  const filteredAttendees = useMemo(() => {
+    if (!q.trim()) {
+      return allAttendees.slice(0, 50); // Mostrar solo los primeros 50 si no hay búsqueda
+    }
+    const searchTerm = q.trim().toLowerCase();
+    return allAttendees.filter(attendee => 
+      attendee.full_name.toLowerCase().includes(searchTerm)
+    ).slice(0, 50); // Limitar a 50 resultados
+  }, [allAttendees, q]);
+
+  const pending = useMemo(() => filteredAttendees.filter(r => !r.checked_in_at), [filteredAttendees]);
 
   const checkIn = async (r: Attendee) => {
-    const { data, error } = await supabase.rpc('check_in_attendee', { p_id: r.id, p_station: station });
-    if (error) { alert('Error en check-in'); console.error(error); return; }
-    const row = data?.[0];
-    if (!row?.ticket_no) { alert('Ya estaba registrado'); return; }
-
+    const { data, error } = await supabase
+      .rpc('check_in_attendee', { p_id: r.id, p_station: station });
+  
+    if (error) {
+      console.error('RPC error', error);
+      alert(`Error en check-in: ${error.message || 'ver consola'}`);
+      return;
+    }
+  
+    const row = data && data[0];
+    if (!row) {
+      alert('No se recibió respuesta del servidor');
+      return;
+    }
+  
+    // Si ya estaba checkeado, ticket_no puede venir con valor (perfecto).
+    // Si viniera null, avisamos.
+    if (row.ticket_no == null) {
+      alert('Participante sin número asignado (ya estaba sin ticket?)');
+      return;
+    }
+  
     await printLabelHtml(printer, r.full_name, row.ticket_no);
-    // refrescamos resultados
-    const copy = rows.map(x => x.id === r.id ? { ...x, checked_in_at: row.checked_in_at, ticket_no: row.ticket_no, station } : x);
-    setRows(copy);
+  
+    // refrescamos UI local
+    const copy = allAttendees.map(x =>
+      x.id === r.id
+        ? { ...x, checked_in_at: row.checked_in_at, ticket_no: row.ticket_no, station }
+        : x
+    );
+    setAllAttendees(copy);
   };
 
   const reprint = async (r: Attendee) => {
@@ -55,43 +122,285 @@ export default function Page() {
   };
 
   return (
-    <div style={{padding:24, maxWidth:860, margin:'0 auto', fontFamily:'Inter, system-ui, Arial'}}>
-      <h1>Check-in evento</h1>
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--background)',
+      padding: '20px'
+    }}>
+      <div style={{
+        maxWidth: '1200px',
+        margin: '0 auto'
+      }}>
+        <h1>Check-in evento</h1>
 
-      <fieldset style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, margin:'12px 0'}}>
-        <label>Estación
-          <input value={station} onChange={e=>setStation(e.target.value)} placeholder="N1 / N2 / N3"/>
-        </label>
-        <label>Impresora
-          <input value={printer} onChange={e=>setPrinter(e.target.value)} placeholder="Nombre exacto en el sistema"/>
-        </label>
-        <label>Buscar
-          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Nombre…"/>
-        </label>
-      </fieldset>
+        <fieldset style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, margin:'12px 0'}}>
+          <label>Estación
+            <input value={station} onChange={e=>setStation(e.target.value)} placeholder="N1 / N2 / N3"/>
+          </label>
 
-      <ImportBlock onImported={() => setQ(q)} />
+          <label>Impresora
+            <select value={printer} onChange={e=>setPrinter(e.target.value)}>
+              <option value="">{printers.length ? '— Elegí —' : '— Cargando/QZ —'}</option>
+              {printers.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
 
-      <AddManual onAdded={(a) => setRows([a, ...rows])} />
+          <div style={{display:'flex', alignItems:'end'}}>
+            <button onClick={testPrint}>Probar impresión</button>
+          </div>
+        </fieldset>
 
-      <h3 style={{marginTop:20}}>Resultados {loading && '…'}</h3>
-      <ul style={{listStyle:'none', padding:0}}>
-        {rows.map(r => (
-          <li key={r.id} style={{display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid #eee'}}>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:600}}>{r.full_name}</div>
-              <div style={{fontSize:12, color:'#555'}}>
-                {r.ticket_no ? `#${r.ticket_no} · ${new Date(r.checked_in_at!).toLocaleString()}` : '— pendiente —'}
-                {r.station ? ` · ${r.station}` : ''}
-              </div>
+        {/* Import and Add Manual sections - Compact */}
+        <div style={{
+          display: 'flex',
+          gap: '16px',
+          marginBottom: '24px',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap'
+        }}>
+          <ImportBlock onImported={() => setQ(q)}/>
+          <AddManual onAdded={(a) => setAllAttendees([a, ...allAttendees])} />
+        </div>
+
+        {/* Header */}
+        <div className="card" style={{marginBottom: '24px'}}>
+          <div className="card-header">
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: '700',
+              margin: '0',
+              color: 'var(--foreground)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <span style={{
+                width: '40px',
+                height: '40px',
+                background: 'var(--primary)',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px'
+              }}>✓</span>
+              Check-in Evento
+            </h1>
+            <p style={{
+              margin: '8px 0 0 0',
+              color: 'var(--secondary)',
+              fontSize: '16px'
+            }}>
+              Sistema de registro y control de asistencia
+            </p>
+          </div>
+
+          {/* Configuration Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap: '16px',
+            marginBottom: '20px'
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: '6px',
+                color: 'var(--foreground)'
+              }}>
+                🏢 Estación
+              </label>
+              <input 
+                value={station} 
+                onChange={e=>setStation(e.target.value)} 
+                placeholder="N1 / N2 / N3"
+                style={{width: '100%'}}
+              />
             </div>
-            {r.checked_in_at
-              ? <button onClick={()=>reprint(r)}>Reimprimir</button>
-              : <button onClick={()=>checkIn(r)}>Asistió</button>}
-          </li>
-        ))}
-      </ul>
-      <p style={{marginTop:12, fontSize:12, color:'#666'}}>Tip: Enter confirma el campo de búsqueda, click en “Asistió” imprime de inmediato.</p>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: '6px',
+                color: 'var(--foreground)'
+              }}>
+                🖨️ Impresora
+              </label>
+              <input 
+                value={printer} 
+                onChange={e=>setPrinter(e.target.value)} 
+                placeholder="Nombre exacto en el sistema"
+                style={{width: '100%'}}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: '6px',
+                color: 'var(--foreground)'
+              }}>
+                🔍 Buscar Participante
+              </label>
+              <input 
+                autoFocus 
+                value={q} 
+                onChange={e=>setQ(e.target.value)} 
+                placeholder="Escriba el nombre..."
+                style={{width: '100%'}}
+              />
+            </div>
+          </div>
+        </div>
+
+        
+
+        {/* Results Section */}
+        <div className="card">
+          <div className="card-header">
+            <h3 style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              margin: '0',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              📋 Resultados
+              {loading && <div className="loading"></div>}
+              <span style={{
+                background: 'var(--primary)',
+                color: 'white',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '12px',
+                fontWeight: '500'
+              }}>
+                {filteredAttendees.length}
+              </span>
+            </h3>
+          </div>
+
+          {filteredAttendees.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '40px',
+              color: 'var(--secondary)'
+            }}>
+              <div style={{fontSize: '48px', marginBottom: '16px'}}>👥</div>
+              <p style={{fontSize: '16px', margin: '0'}}>
+                {q ? 'No se encontraron participantes' : 'Comience escribiendo un nombre para buscar'}
+              </p>
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gap: '8px'
+            }}>
+              {filteredAttendees.map(r => (
+                <div key={r.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '16px',
+                  background: r.checked_in_at ? 'rgb(16 185 129 / 0.05)' : 'var(--background)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    background: r.checked_in_at ? 'var(--success)' : 'var(--secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '16px',
+                    fontWeight: '600'
+                  }}>
+                    {r.checked_in_at ? '✓' : r.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  
+                  <div style={{flex: 1}}>
+                    <div style={{
+                      fontWeight: '600',
+                      fontSize: '16px',
+                      color: 'var(--foreground)',
+                      marginBottom: '4px'
+                    }}>
+                      {r.full_name}
+                    </div>
+                    <div style={{
+                      fontSize: '14px',
+                      color: 'var(--secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      {r.checked_in_at ? (
+                        <>
+                          <span className="badge success">
+                            ✓ Registrado
+                          </span>
+                          <span>#{r.ticket_no}</span>
+                          <span>•</span>
+                          <span>{new Date(r.checked_in_at).toLocaleString()}</span>
+                          {r.station && (
+                            <>
+                              <span>•</span>
+                              <span>{r.station}</span>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="badge pending">
+                          ⏳ Pendiente
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {r.checked_in_at ? (
+                    <button 
+                      className="secondary"
+                      onClick={() => reprint(r)}
+                      style={{minWidth: '120px'}}
+                    >
+                      🖨️ Reimprimir
+                    </button>
+                  ) : (
+                    <button 
+                      className="success"
+                      onClick={() => checkIn(r)}
+                      style={{minWidth: '120px'}}
+                    >
+                      ✓ Registrar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{
+            marginTop: '20px',
+            padding: '16px',
+            background: 'rgb(59 130 246 / 0.05)',
+            border: '1px solid rgb(59 130 246 / 0.2)',
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: 'var(--primary)'
+          }}>
+            💡 <strong>Tip:</strong> Presione Enter para confirmar la búsqueda. Al hacer clic en "Registrar" se imprime automáticamente la etiqueta.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -100,6 +409,7 @@ export default function Page() {
 import { parseFile } from './lib/readSpreadsheet';
 
 function ImportBlock({ onImported }: { onImported: () => void }) {
+  const [showModal, setShowModal] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
@@ -109,8 +419,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   const [skipDupById, setSkipDupById] = useState(true);
 
   async function handleFile(f: File) {
-    // límites básicos
-    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+    const MAX_SIZE = 5 * 1024 * 1024;
     if (!/\.(xlsx|csv)$/i.test(f.name)) return alert('Solo .xlsx o .csv');
     if (f.size > MAX_SIZE) return alert('Archivo muy grande (>5MB)');
 
@@ -128,7 +437,6 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   async function doImport() {
     if (!nameCol) return alert('Elegí la columna de NOMBRE');
 
-    // saneo: máximo 5000 filas por importación
     const subset = rows.slice(0, 5000).map(r => ({
       full_name: String(r[nameCol] ?? '').trim(),
       external_id: idCol ? String(r[idCol] ?? '').trim() || null : null,
@@ -137,8 +445,6 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
 
     if (!subset.length) return alert('No hay filas válidas');
 
-    // inserción/actualización
-    // Si marcamos evitar duplicados por ID y llegó external_id, hacemos upsert por esa columna.
     const op = (skipDupById && subset.some(x => !!x.external_id))
       ? supabase.from('attendees').upsert(subset, { onConflict: 'external_id', ignoreDuplicates: false })
       : supabase.from('attendees').insert(subset);
@@ -146,49 +452,200 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     const { error } = await op;
     if (error) { alert('Error al importar'); console.error(error); return; }
     alert(`Importación OK (${subset.length} registros)`);
+    setShowModal(false);
+    setFile(null);
     onImported();
+    // Recargar todos los participantes después de importar
+    window.location.reload();
   }
 
   return (
-    <div style={{margin:'16px 0', padding:12, border:'1px dashed #aaa', borderRadius:8}}>
-      <h3>Importar Excel/CSV</h3>
-      <input type="file" accept=".xlsx,.csv"
-             onChange={e => e.target.files && handleFile(e.target.files[0])} />
+    <>
+      <button 
+        onClick={() => setShowModal(true)}
+        style={{
+          padding: '12px 20px',
+          background: 'var(--primary)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          whiteSpace: 'nowrap',
+          marginTop: '100px'
+        }}
+      >
+        📁 Importar Excel/CSV
+      </button>
 
-      {file && (
-        <>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginTop:12}}>
-            <label>Columna NOMBRE
-              <select value={nameCol} onChange={e=>setNameCol(e.target.value)}>
-                <option value="">—</option>
-                {columns.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>Columna ID (DNI/Legajo) (opcional)
-              <select value={idCol} onChange={e=>setIdCol(e.target.value)}>
-                <option value="">—</option>
-                {columns.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>Columna Email (opcional)
-              <select value={emailCol} onChange={e=>setEmailCol(e.target.value)}>
-                <option value="">—</option>
-                {columns.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label style={{display:'flex', alignItems:'center', gap:8}}>
-              <input type="checkbox" checked={skipDupById}
-                     onChange={e=>setSkipDupById(e.target.checked)} />
-              Evitar duplicados por ID (usa upsert)
-            </label>
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="card" style={{
+            width: '90%',
+            maxWidth: '600px',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <div className="card-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                margin: '0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                📁 Importar Excel/CSV
+              </h3>
+              <button 
+                onClick={() => setShowModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div style={{marginBottom: '16px'}}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: '8px',
+                color: 'var(--foreground)'
+              }}>
+                Seleccionar archivo
+              </label>
+              <input 
+                type="file" 
+                accept=".xlsx,.csv"
+                onChange={e => e.target.files && handleFile(e.target.files[0])}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px dashed var(--border)',
+                  borderRadius: '8px',
+                  background: 'var(--background)',
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+
+            {file && (
+              <>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: '12px',
+                  marginBottom: '16px'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna NOMBRE *
+                    </label>
+                    <select value={nameCol} onChange={e=>setNameCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Seleccionar —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna ID
+                    </label>
+                    <select value={idCol} onChange={e=>setIdCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Opcional —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna Email
+                    </label>
+                    <select value={emailCol} onChange={e=>setEmailCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Opcional —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px',
+                  padding: '8px',
+                  background: 'var(--background)',
+                  borderRadius: '6px'
+                }}>
+                  <input 
+                    type="checkbox" 
+                    id="skipDup"
+                    checked={skipDupById}
+                    onChange={e=>setSkipDupById(e.target.checked)}
+                    style={{margin: '0'}}
+                  />
+                  <label htmlFor="skipDup" style={{
+                    fontSize: '13px',
+                    color: 'var(--foreground)',
+                    cursor: 'pointer',
+                    margin: '0'
+                  }}>
+                    🔄 Evitar duplicados por ID
+                  </label>
+                </div>
+                
+                <div style={{display: 'flex', gap: '12px'}}>
+                  <button onClick={doImport} style={{flex: 1}}>
+                    📤 Importar Datos
+                  </button>
+                  <button onClick={() => setShowModal(false)} className="secondary">
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          <button style={{marginTop:12}} onClick={doImport}>Importar</button>
-        </>
+        </div>
       )}
-      <div style={{fontSize:12, color:'#666', marginTop:8}}>
-        Sugerencia: si podés, exportá a <b>CSV</b> antes de importar (más ligero y seguro).
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -210,14 +667,83 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
   };
 
   return (
-    <div style={{margin:'16px 0', padding:12, border:'1px dashed #aaa', borderRadius:8}}>
-      <h3>Agregar participante</h3>
-      <div style={{display:'grid', gridTemplateColumns:'2fr 1fr 1fr auto', gap:12}}>
-        <input placeholder="Nombre y apellido" value={name} onChange={e=>setName(e.target.value)} />
-        <input placeholder="DNI/ID (opcional)" value={externalId} onChange={e=>setExternalId(e.target.value)} />
-        <input placeholder="Email (opcional)" value={email} onChange={e=>setEmail(e.target.value)} />
-        <button onClick={add}>Agregar</button>
+    <div className="card" style={{flex: 1, minWidth: '400px'}}>
+      <div className="card-header">
+        <h3 style={{
+          fontSize: '16px',
+          fontWeight: '600',
+          margin: '0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          👤 Agregar Participante
+        </h3>
       </div>
+      
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '2fr 1fr 1fr',
+        gap: '12px',
+        marginBottom: '12px'
+      }}>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            Nombre y Apellido *
+          </label>
+          <input 
+            placeholder="Nombre completo" 
+            value={name} 
+            onChange={e=>setName(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            DNI/ID
+          </label>
+          <input 
+            placeholder="12345678" 
+            value={externalId} 
+            onChange={e=>setExternalId(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            Email
+          </label>
+          <input 
+            type="email"
+            placeholder="email@ejemplo.com" 
+            value={email} 
+            onChange={e=>setEmail(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+      </div>
+      
+      <button onClick={add} style={{width: '100%', padding: '10px'}}>
+        ➕ Agregar
+      </button>
     </div>
   );
 }

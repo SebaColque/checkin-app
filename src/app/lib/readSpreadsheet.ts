@@ -16,8 +16,7 @@ export async function parseFile(file: File): Promise<ParsedTable> {
   }
 
   // XLSX
-  // Importar el build para browser
-  const ExcelJS: any = (await import('exceljs/dist/exceljs.min.js')).default || (await import('exceljs/dist/exceljs.min.js'));
+  const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(ab);
   const ws = wb.worksheets[0];

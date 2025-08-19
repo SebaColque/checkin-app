@@ -2,27 +2,95 @@ declare global { interface Window { qz: any } }
 
 let qzConnected = false;
 
+let qzReady = false;
 export async function ensureQZ() {
-  if (qzConnected && window.qz?.websocket?.isActive()) return;
-  await window.qz?.websocket?.connect();
-  qzConnected = true;
+  if (!window.qz) throw new Error('QZ Tray no cargó');
+  if (!qzReady || !window.qz.websocket.isActive()) {
+    await window.qz.websocket.connect();   // primera vez pedirá permisos
+    qzReady = true;
+  }
 }
 
+// Tu impresión HTML queda igual:
 export async function printLabelHtml(printerName: string, name: string, ticket: number) {
   await ensureQZ();
+  console.log(printerName, name, ticket)
+  const html = `<!doctype html>
+  <html><head>
+    <meta charset="utf-8">
+    <style>
+      @page { 
+        size: 60mm 40mm; 
+        margin: 0; 
+        padding: 0;
+      }
+      * { 
+        box-sizing: border-box; 
+      }
+      body { 
+        margin: 0; 
+        padding: 0; 
+        width: 60mm; 
+        height: 40mm; 
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="width:100%;height:100%;padding:2mm;display:flex;flex-direction:column;justify-content:center;font-family:Arial">
+      <div style="font-size:12pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>
+      <div style="font-size:28pt;font-weight:700;margin-top:2mm">#${ticket}</div>
+    </div>
+  </body></html>`;
 
-  // Plantilla de 60x40mm; ajustá tamaños según tu etiqueta real
-  const html = `
-  <div style="width:60mm;height:40mm;padding:2mm;display:flex;flex-direction:column;justify-content:center;font-family:Arial">
-    <div style="font-size:14pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(name)}</div>
-    <div style="font-size:28pt;font-weight:700;margin-top:2mm">#${ticket}</div>
-  </div>`;
+  const cfg = window.qz.configs.create(printerName || undefined, {
+    units: 'mm',
+    size: { width: 60, height: 40 },
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    scaleContent: false,
+    rasterize: false,  // Cambiar a false para mejor control de páginas
+    orientation: 'portrait'
+  });
 
-  const cfg = window.qz.configs.create(printerName || 'Xprinter'); // nombre tal cual figura en el sistema
-  await window.qz.print(cfg, [{ type: 'html', format: 'html', data: html }]);
+  // 👇 clave: enviar HTML CRUDO (no URL), flavor 'plain'
+  const payload = [{
+    type: 'pixel',
+    format: 'html',
+    flavor: 'plain',
+    data: html,
+  }];
+
+  await window.qz.print(cfg, payload);
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, m =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'} as any)[m]);
+function esc(s: string) {
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'} as any)[m]);
+}
+
+
+export async function listPrinters(): Promise<string[]> {
+    await ensureQZ();
+    const p = window.qz?.printers;
+    if (!p) return [];
+  
+    // v2.x (builds completos)
+    if (typeof p.findAll === 'function') {
+      return p.findAll();
+    }
+  
+    // Fallback: si no existe findAll, al menos devolvés la default
+    if (typeof p.getDefault === 'function') {
+      const def = await p.getDefault().catch(() => '');
+      return def ? [def] : [];
+    }
+    return [];
+}
+
+export async function getDefaultPrinter(): Promise<string> {
+    await ensureQZ();
+    const p = window.qz?.printers;
+    if (p && typeof p.getDefault === 'function') {
+      return p.getDefault();
+    }
+    return ''; // sin método → no podemos detectarla, se ingresará manualmente
 }
