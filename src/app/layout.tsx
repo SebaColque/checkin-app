@@ -20,11 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {/* Cargar ANTES de que se renderice la app */}
         <Script src="/vendor/qz-tray.js" strategy="beforeInteractive" />
-        <Script id="qz-dev-security" strategy="afterInteractive">{`
+        <Script id="qz-dev-security" strategy="beforeInteractive">{`
             if (window.qz && window.qz.security) {
-              // DEV: sin certificado ni firma; requiere "Allow unsigned" en QZ Tray
+              // Permitir sin certificado/ni firma (requiere que "Block anonymous" esté destildado)
               window.qz.security.setCertificatePromise((resolve, reject) => resolve());
-              window.qz.security.setSignaturePromise((resolve, reject) => resolve());
+              window.qz.security.setSignaturePromise(() => (resolve, reject) => resolve());
             }
           `}</Script>
         {children}
