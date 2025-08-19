@@ -5,15 +5,29 @@ import './globals.css'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('load', function() {
-        if (window.qz && window.qz.security) {
-          // DEV: dejar vacío (requiere "Allow unsigned" en QZ Tray)
-          window.qz.security.setCertificatePromise((resolve: any, reject: any) => resolve());
-          window.qz.security.setSignaturePromise((resolve: any, reject: any) => resolve());
-        }
+    (function () {
+      if (!window.qz || !window.qz.security) return;
+
+      // 1) Entregar certificado público
+      window.qz.security.setCertificatePromise(function(resolve: any, reject: any){
+        fetch('/api/qz/cert')
+          .then(function(r){ return r.text(); })
+          .then(resolve).catch(reject);
       });
-    }
+
+      // 2) Delegar la firma al backend
+      window.qz.security.setSignaturePromise(function(toSign: any){
+        return function(resolve: any, reject: any){
+          fetch('/api/qz/sign', {
+            method: 'POST',
+            headers: { 'content-type': 'text/plain' },
+            body: toSign
+          })
+          .then(function(r){ return r.text(); })
+          .then(resolve).catch(reject);
+        };
+      });
+    })();
   }, []);
   return (
     <html lang="es">
@@ -21,11 +35,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Cargar ANTES de que se renderice la app */}
         <Script src="/vendor/qz-tray.js" strategy="beforeInteractive" />
         <Script id="qz-dev-security" strategy="beforeInteractive">{`
-            if (window.qz && window.qz.security) {
-              // Permitir sin certificado/ni firma (requiere que "Block anonymous" esté destildado)
-              window.qz.security.setCertificatePromise((resolve, reject) => resolve());
-              window.qz.security.setSignaturePromise(() => (resolve, reject) => resolve());
-            }
+            (function () {
+            if (!window.qz || !window.qz.security) return;
+
+            // 1) Entregar certificado público
+            window.qz.security.setCertificatePromise(function(resolve, reject){
+              fetch('/api/qz/cert')
+                .then(function(r){ return r.text(); })
+                .then(resolve).catch(reject);
+            });
+
+            // 2) Delegar la firma al backend
+            window.qz.security.setSignaturePromise(function(toSign){
+              return function(resolve, reject){
+                fetch('/api/qz/sign', {
+                  method: 'POST',
+                  headers: { 'content-type': 'text/plain' },
+                  body: toSign
+                })
+                .then(function(r){ return r.text(); })
+                .then(resolve).catch(reject);
+              };
+            });
+          })();
           `}</Script>
         {children}
       </body> 
