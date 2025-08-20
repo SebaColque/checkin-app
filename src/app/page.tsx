@@ -285,6 +285,56 @@ export default function Page() {
               />
             </div>
           </div>
+
+          {/* Editor Link and Test Print */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            marginBottom: '20px',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            <a 
+              href="/qz-editor"
+              target="_blank"
+              style={{
+                padding: '10px 16px',
+                background: 'var(--primary)',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              🎨 Editor de Plantilla
+            </a>
+            <button 
+              onClick={testPrint}
+              style={{
+                padding: '10px 16px',
+                background: 'var(--secondary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              🖨️ Prueba de Impresión
+            </button>
+          </div>
         </div>
 
         
