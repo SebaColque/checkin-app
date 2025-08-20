@@ -17,9 +17,9 @@ export async function ensureQZ() {
 }
 
 // Tu impresión HTML queda igual:
-export async function printLabelHtml(printerName: string, name: string, ticket: number) {
+export async function printLabelHtml(printerName: string, name: string, company: string, ticket: number) {
   await ensureQZ();
-  console.log(printerName, name, ticket)
+  console.log(printerName, name, company, ticket)
   const html = `<!doctype html>
   <html><head>
     <meta charset="utf-8">
@@ -38,13 +38,15 @@ export async function printLabelHtml(printerName: string, name: string, ticket: 
         width: 60mm; 
         height: 40mm; 
         overflow: hidden;
+        position: relative;
       }
     </style>
   </head>
   <body>
-    <div style="width:100%;height:100%;padding:2mm;display:flex;flex-direction:column;justify-content:center;font-family:Arial">
-      <div style="font-size:12pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>
-      <div style="font-size:28pt;font-weight:700;margin-top:2mm">#${ticket}</div>
+    <div style="width:100%;height:100%;padding:2mm;display:flex;flex-direction:column;justify-content:flex-start;font-family:Arial;position:relative">
+      <div style="font-size:14pt;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1mm">${esc(name)}</div>
+      <div style="font-size:12pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#666">${esc(company)}</div>
+      <div style="position:absolute;bottom:2mm;right:2mm;font-size:18pt;font-weight:700">${ticket}</div>
     </div>
   </body></html>`;
 

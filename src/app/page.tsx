@@ -7,6 +7,9 @@ export default function Page() {
   const [q, setQ] = useState('');
   const [allAttendees, setAllAttendees] = useState<Attendee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCompany, setEditCompany] = useState('');
 
   // 1) INIT seguro en SSR: nunca tocar localStorage en el render inicial
   const [station, setStation] = useState<string>('N1');
@@ -47,7 +50,7 @@ export default function Page() {
 
   const testPrint = async () => {
     if (!printer) return alert('Elegí una impresora');
-    await printLabelHtml(printer, 'PRUEBA', 123);  // crea un PDF si usás “Print to PDF”
+    await printLabelHtml(printer, 'PRUEBA', 'EMPRESA TEST', 123);  // crea un PDF si usás “Print to PDF”
   };
 
   // Carga inicial de todos los participantes
@@ -57,7 +60,7 @@ export default function Page() {
       setLoading(true);
       const { data, error } = await supabase
         .from('attendees')
-        .select('id, full_name, external_id, email, checked_in_at, ticket_no, station')
+        .select('id, full_name, company, checked_in_at, ticket_no, station')
         .order('full_name');
 
       if (!abort) {
@@ -105,7 +108,7 @@ export default function Page() {
       return;
     }
   
-    await printLabelHtml(printer, r.full_name, row.ticket_no);
+    await printLabelHtml(printer, r.full_name, r.company || '', row.ticket_no);
   
     // refrescamos UI local
     const copy = allAttendees.map(x =>
@@ -118,7 +121,53 @@ export default function Page() {
 
   const reprint = async (r: Attendee) => {
     if (!r.ticket_no) return;
-    await printLabelHtml(printer, r.full_name, r.ticket_no);
+    await printLabelHtml(printer, r.full_name, r.company || '', r.ticket_no);
+  };
+
+  const startEdit = (r: Attendee) => {
+    setEditingId(r.id);
+    setEditName(r.full_name);
+    setEditCompany(r.company || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName('');
+    setEditCompany('');
+  };
+
+  const saveEdit = async (r: Attendee) => {
+    if (!editName.trim()) {
+      alert('El nombre no puede estar vacío');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('attendees')
+      .update({
+        full_name: editName.trim(),
+        company: editCompany.trim() || null
+      })
+      .eq('id', r.id);
+
+    if (error) {
+      console.error('Error updating attendee:', error);
+      alert('Error al guardar los cambios');
+      return;
+    }
+
+    // Update local state
+    const updatedAttendees = allAttendees.map(attendee =>
+      attendee.id === r.id
+        ? { ...attendee, full_name: editName.trim(), company: editCompany.trim() || null }
+        : attendee
+    );
+    setAllAttendees(updatedAttendees);
+    
+    // Reset edit state
+    setEditingId(null);
+    setEditName('');
+    setEditCompany('');
   };
 
   return (
@@ -309,14 +358,57 @@ export default function Page() {
                   </div>
                   
                   <div style={{flex: 1}}>
-                    <div style={{
-                      fontWeight: '600',
-                      fontSize: '16px',
-                      color: 'var(--foreground)',
-                      marginBottom: '4px'
-                    }}>
-                      {r.full_name}
-                    </div>
+                    {editingId === r.id ? (
+                      <div style={{
+                        display: 'flex',
+                        gap: '8px',
+                        marginBottom: '4px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Nombre completo"
+                          style={{
+                            flex: '1',
+                            minWidth: '150px',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            background: 'var(--background)'
+                          }}
+                        />
+                        <input
+                          value={editCompany}
+                          onChange={(e) => setEditCompany(e.target.value)}
+                          placeholder="Empresa"
+                          style={{
+                            flex: '1',
+                            minWidth: '120px',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            background: 'var(--background)'
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div style={{
+                        fontWeight: '600',
+                        fontSize: '16px',
+                        color: 'var(--foreground)',
+                        marginBottom: '4px',
+                        cursor: 'pointer',
+                        padding: '2px 0'
+                      }}
+                      onClick={() => startEdit(r)}
+                      title="Haz clic para editar"
+                      >
+                        {r.full_name} - {r.company || 'Sin empresa'}
+                      </div>
+                    )}
                     <div style={{
                       fontSize: '14px',
                       color: 'var(--secondary)',
@@ -329,7 +421,7 @@ export default function Page() {
                           <span className="badge success">
                             ✓ Registrado
                           </span>
-                          <span>#{r.ticket_no}</span>
+                          <span>{r.ticket_no}</span>
                           <span>•</span>
                           <span>{new Date(r.checked_in_at).toLocaleString()}</span>
                           {r.station && (
@@ -347,23 +439,54 @@ export default function Page() {
                     </div>
                   </div>
                   
-                  {r.checked_in_at ? (
-                    <button 
-                      className="secondary"
-                      onClick={() => reprint(r)}
-                      style={{minWidth: '120px'}}
-                    >
-                      🖨️ Reimprimir
-                    </button>
-                  ) : (
-                    <button 
-                      className="success"
-                      onClick={() => checkIn(r)}
-                      style={{minWidth: '120px'}}
-                    >
-                      ✓ Registrar
-                    </button>
-                  )}
+                  <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                    {editingId === r.id ? (
+                      <>
+                        <button 
+                          className="success"
+                          onClick={() => saveEdit(r)}
+                          style={{minWidth: '80px', fontSize: '12px', padding: '6px 12px'}}
+                        >
+                          ✓ Guardar
+                        </button>
+                        <button 
+                          className="secondary"
+                          onClick={cancelEdit}
+                          style={{minWidth: '80px', fontSize: '12px', padding: '6px 12px'}}
+                        >
+                          ✕ Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button 
+                          className="secondary"
+                          onClick={() => startEdit(r)}
+                          style={{minWidth: '80px', fontSize: '12px', padding: '6px 12px'}}
+                          title="Editar nombre y empresa"
+                        >
+                          ✏️ Editar
+                        </button>
+                        {r.checked_in_at ? (
+                          <button 
+                            className="secondary"
+                            onClick={() => reprint(r)}
+                            style={{minWidth: '120px'}}
+                          >
+                            🖨️ Reimprimir
+                          </button>
+                        ) : (
+                          <button 
+                            className="success"
+                            onClick={() => checkIn(r)}
+                            style={{minWidth: '120px'}}
+                          >
+                            ✓ Registrar
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -395,8 +518,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [nameCol, setNameCol] = useState('');
-  const [idCol, setIdCol] = useState('');
-  const [emailCol, setEmailCol] = useState('');
+  const [companyCol, setCompanyCol] = useState('');
   const [skipDupById, setSkipDupById] = useState(true);
 
   async function handleFile(f: File) {
@@ -411,8 +533,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
 
     const guess = (alts: string[]) => headers.find((h: string) => alts.some(a => h.includes(a)));
     setNameCol(guess(['nombre', 'name', 'apellido']) || headers[0] || '');
-    setIdCol(guess(['dni', 'doc', 'id', 'legajo']) || '');
-    setEmailCol(guess(['mail', 'email', 'correo']) || '');
+    setCompanyCol(guess(['empresa', 'company', 'compañia', 'organizacion']) || '');
   }
 
   async function doImport() {
@@ -420,15 +541,12 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
 
     const subset = rows.slice(0, 5000).map(r => ({
       full_name: String(r[nameCol] ?? '').trim(),
-      external_id: idCol ? String(r[idCol] ?? '').trim() || null : null,
-      email: emailCol ? String(r[emailCol] ?? '').trim() || null : null
+      company: companyCol ? String(r[companyCol] ?? '').trim() || null : null
     })).filter(x => x.full_name);
 
     if (!subset.length) return alert('No hay filas válidas');
 
-    const op = (skipDupById && subset.some(x => !!x.external_id))
-      ? supabase.from('attendees').upsert(subset, { onConflict: 'external_id', ignoreDuplicates: false })
-      : supabase.from('attendees').insert(subset);
+    const op = supabase.from('attendees').insert(subset);
 
     const { error } = await op;
     if (error) { alert('Error al importar'); console.error(error); return; }
@@ -563,55 +681,15 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
                       marginBottom: '4px',
                       color: 'var(--foreground)'
                     }}>
-                      Columna ID
+                      Columna EMPRESA
                     </label>
-                    <select value={idCol} onChange={e=>setIdCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
-                      <option value="">— Opcional —</option>
-                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      marginBottom: '4px',
-                      color: 'var(--foreground)'
-                    }}>
-                      Columna Email
-                    </label>
-                    <select value={emailCol} onChange={e=>setEmailCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                    <select value={companyCol} onChange={e=>setCompanyCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
                       <option value="">— Opcional —</option>
                       {columns.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
                 
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '16px',
-                  padding: '8px',
-                  background: 'var(--background)',
-                  borderRadius: '6px'
-                }}>
-                  <input 
-                    type="checkbox" 
-                    id="skipDup"
-                    checked={skipDupById}
-                    onChange={e=>setSkipDupById(e.target.checked)}
-                    style={{margin: '0'}}
-                  />
-                  <label htmlFor="skipDup" style={{
-                    fontSize: '13px',
-                    color: 'var(--foreground)',
-                    cursor: 'pointer',
-                    margin: '0'
-                  }}>
-                    🔄 Evitar duplicados por ID
-                  </label>
-                </div>
                 
                 <div style={{display: 'flex', gap: '12px'}}>
                   <button onClick={doImport} style={{flex: 1}}>
@@ -708,17 +786,16 @@ function ResetBlock({ onReset }: { onReset: () => void }) {
 /** ----- Componente: Alta manual ----- */
 function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
   const [name, setName] = useState('');
-  const [externalId, setExternalId] = useState('');
-  const [email, setEmail] = useState('');
+  const [company, setCompany] = useState('');
 
   const add = async () => {
-    const payload = { full_name: name.trim(), external_id: externalId.trim() || null, email: email.trim() || null };
+    const payload = { full_name: name.trim(), company: company.trim() || null };
     if (!payload.full_name) { alert('Nombre requerido'); return; }
     const { data, error } = await supabase.from('attendees')
       .insert(payload).select().single();
     if (error) { alert('Error al agregar'); console.error(error); return; }
     onAdded(data as any);
-    setName(''); setExternalId(''); setEmail('');
+    setName(''); setCompany('');
   };
 
   return (
@@ -738,7 +815,7 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
       
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '2fr 1fr 1fr',
+        gridTemplateColumns: '1fr 1fr',
         gap: '12px',
         marginBottom: '12px'
       }}>
@@ -767,30 +844,12 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
             marginBottom: '4px',
             color: 'var(--foreground)'
           }}>
-            DNI/ID
+            Empresa
           </label>
           <input 
-            placeholder="12345678" 
-            value={externalId} 
-            onChange={e=>setExternalId(e.target.value)}
-            style={{width: '100%', fontSize: '14px'}}
-          />
-        </div>
-        <div>
-          <label style={{
-            display: 'block',
-            fontSize: '13px',
-            fontWeight: '500',
-            marginBottom: '4px',
-            color: 'var(--foreground)'
-          }}>
-            Email
-          </label>
-          <input 
-            type="email"
-            placeholder="email@ejemplo.com" 
-            value={email} 
-            onChange={e=>setEmail(e.target.value)}
+            placeholder="Nombre de la empresa" 
+            value={company} 
+            onChange={e=>setCompany(e.target.value)}
             style={{width: '100%', fontSize: '14px'}}
           />
         </div>

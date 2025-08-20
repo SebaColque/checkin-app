@@ -9,8 +9,7 @@ export const supabase = createClient(
 export type Attendee = {
   id: string;
   full_name: string;
-  external_id?: string | null;
-  email?: string | null;
+  company?: string | null;
   checked_in_at?: string | null;
   ticket_no?: number | null;
   station?: string | null;
