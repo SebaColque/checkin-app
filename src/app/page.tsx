@@ -72,12 +72,12 @@ export default function Page() {
   // Filtrado en tiempo real usando useMemo
   const filteredAttendees = useMemo(() => {
     if (!q.trim()) {
-      return allAttendees.slice(0, 50); // Mostrar solo los primeros 50 si no hay búsqueda
+      return allAttendees.slice(0, 500000); // Mostrar solo los primeros 50 si no hay búsqueda
     }
     const searchTerm = q.trim().toLowerCase();
     return allAttendees.filter(attendee => 
       attendee.full_name.toLowerCase().includes(searchTerm)
-    ).slice(0, 50); // Limitar a 50 resultados
+    ).slice(0, 500000); // Limitar a 50 resultados
   }, [allAttendees, q]);
 
   const pending = useMemo(() => filteredAttendees.filter(r => !r.checked_in_at), [filteredAttendees]);
@@ -131,24 +131,6 @@ export default function Page() {
         maxWidth: '1200px',
         margin: '0 auto'
       }}>
-        <h1>Check-in evento</h1>
-
-        <fieldset style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, margin:'12px 0'}}>
-          <label>Estación
-            <input value={station} onChange={e=>setStation(e.target.value)} placeholder="N1 / N2 / N3"/>
-          </label>
-
-          <label>Impresora
-            <select value={printer} onChange={e=>setPrinter(e.target.value)}>
-              <option value="">{printers.length ? '— Elegí —' : '— Cargando/QZ —'}</option>
-              {printers.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </label>
-
-          <div style={{display:'flex', alignItems:'end'}}>
-            <button onClick={testPrint}>Probar impresión</button>
-          </div>
-        </fieldset>
 
         {/* Import and Add Manual sections - Compact */}
         <div style={{
@@ -160,6 +142,7 @@ export default function Page() {
         }}>
           <ImportBlock onImported={() => setQ(q)}/>
           <AddManual onAdded={(a) => setAllAttendees([a, ...allAttendees])} />
+          <ResetBlock onReset={() => window.location.reload()} />
         </div>
 
         {/* Header */}
@@ -229,12 +212,10 @@ export default function Page() {
               }}>
                 🖨️ Impresora
               </label>
-              <input 
-                value={printer} 
-                onChange={e=>setPrinter(e.target.value)} 
-                placeholder="Nombre exacto en el sistema"
-                style={{width: '100%'}}
-              />
+              <select style={{width: '300px'}} value={printer} onChange={e=>setPrinter(e.target.value)}>
+                <option value="">{printers.length ? '— Elegí —' : '— Cargando/QZ —'}</option>
+                {printers.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
             </div>
             <div>
               <label style={{
@@ -649,6 +630,80 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   );
 }
 
+
+/** ----- Componente: Reset System ----- */
+function ResetBlock({ onReset }: { onReset: () => void }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleReset = async () => {
+    if (!confirm('¿Estás seguro? Esto eliminará TODOS los participantes de la tabla y reiniciará la numeración de tickets. Esta acción NO se puede deshacer.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        alert('Sistema reseteado correctamente');
+        onReset();
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error resetting system:', error);
+      alert('Error al conectar con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '12px 20px',
+      background: '#dc2626',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: loading ? 'not-allowed' : 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      whiteSpace: 'nowrap',
+      marginTop: '100px',
+      opacity: loading ? 0.6 : 1
+    }}>
+      <button 
+        onClick={handleReset}
+        disabled={loading}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'white',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          fontSize: '14px',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '0'
+        }}
+      >
+        {loading ? '⏳' : '🔄'} {loading ? 'Reseteando...' : 'Resetear Sistema'}
+      </button>
+    </div>
+  );
+}
 
 /** ----- Componente: Alta manual ----- */
 function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
