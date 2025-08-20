@@ -2,6 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { listPrinters, getDefaultPrinter, ensureQZ } from '../lib/print';
+import {
+  saveConfigurationToCloud,
+  updateConfigurationInCloud,
+  loadConfigurationFromCloud,
+  loadDefaultConfigurationFromCloud,
+  listConfigurationsFromCloud,
+  deleteConfigurationFromCloud,
+  saveConfigurationToLocal,
+  loadConfigurationFromLocal,
+  exportConfigurationToFile,
+  importConfigurationFromFile,
+  QZConfiguration,
+  SavedQZConfiguration
+} from '../lib/qz-config';
 
 interface CanvasElement {
   id: string;
@@ -91,16 +105,26 @@ export default function QZEditor() {
   const [testName, setTestName] = useState('Juan Pérez');
   const [testCompany, setTestCompany] = useState('Empresa ABC');
   const [testTicket, setTestTicket] = useState(123);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [cloudConfigs, setCloudConfigs] = useState<SavedQZConfiguration[]>([]);
+  const [selectedCloudConfig, setSelectedCloudConfig] = useState<string>('');
+  const [configName, setConfigName] = useState('');
+  const [configDescription, setConfigDescription] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
   useEffect(() => {
     loadPrinters();
     initializeElements();
+    loadCloudConfigurations();
+    loadDefaultConfiguration();
   }, []);
 
   // Re-initialize elements when test data changes
@@ -320,11 +344,52 @@ export default function QZEditor() {
     if (elementId === 'ticket') setTestTicket(parseInt(content) || 0);
   };
 
-  // Save configuration to localStorage
-  const saveConfiguration = () => {
-    if (typeof window === 'undefined') return;
-    
-    const config = {
+  // Load cloud configurations
+  const loadCloudConfigurations = async () => {
+    try {
+      const configs = await listConfigurationsFromCloud();
+      setCloudConfigs(configs);
+    } catch (error) {
+      console.error('Error loading cloud configurations:', error);
+    }
+  };
+
+  // Load default configuration on startup
+  const loadDefaultConfiguration = async () => {
+    try {
+      const defaultConfig = await loadDefaultConfigurationFromCloud();
+      if (defaultConfig) {
+        applyConfiguration(defaultConfig.configuration);
+      } else {
+        // Fallback to localStorage
+        const localConfig = loadConfigurationFromLocal();
+        if (localConfig) {
+          applyConfiguration(localConfig);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading default configuration:', error);
+      // Fallback to localStorage
+      const localConfig = loadConfigurationFromLocal();
+      if (localConfig) {
+        applyConfiguration(localConfig);
+      }
+    }
+  };
+
+  // Apply configuration to current state
+  const applyConfiguration = (config: QZConfiguration) => {
+    setStyles(config.styles);
+    setElements(config.elements.map((el: any) => ({ ...el, selected: false })));
+    if (config.logoDataUrl) {
+      setLogoDataUrl(config.logoDataUrl);
+    }
+  };
+
+  // Save configuration to localStorage (quick save)
+  const saveConfigurationLocal = () => {
+    const config: QZConfiguration = {
+      name: 'Local Configuration',
       styles,
       elements: elements.map(el => ({
         id: el.id,
@@ -344,28 +409,141 @@ export default function QZEditor() {
       timestamp: Date.now()
     };
     
-    localStorage.setItem('qz-editor-config', JSON.stringify(config));
-    alert('✅ Configuración guardada correctamente');
+    saveConfigurationToLocal(config);
+    alert('✅ Configuración guardada localmente');
   };
 
   // Load configuration from localStorage
-  const loadConfiguration = () => {
-    if (typeof window === 'undefined') return;
-    
-    const saved = localStorage.getItem('qz-editor-config');
-    if (!saved) return;
-    
+  const loadConfigurationLocal = () => {
+    const config = loadConfigurationFromLocal();
+    if (config) {
+      applyConfiguration(config);
+      alert('✅ Configuración local cargada correctamente');
+    } else {
+      alert('❌ No se encontró configuración local');
+    }
+  };
+
+  // Save configuration to cloud
+  const saveConfigurationCloud = async () => {
+    if (!configName.trim()) {
+      alert('❌ Por favor ingresa un nombre para la configuración');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      const config = JSON.parse(saved);
-      setStyles(config.styles);
-      setElements(config.elements.map((el: any) => ({ ...el, selected: false })));
-      if (config.logoDataUrl) {
-        setLogoDataUrl(config.logoDataUrl);
-      }
-      alert('✅ Configuración cargada correctamente');
+      const config: Omit<QZConfiguration, 'id'> & { isDefault?: boolean } = {
+        name: configName.trim(),
+        description: configDescription.trim() || undefined,
+        styles,
+        elements: elements.map(el => ({
+          id: el.id,
+          type: el.type,
+          x: el.x,
+          y: el.y,
+          width: el.width,
+          height: el.height,
+          content: el.content,
+          fontSize: el.fontSize,
+          fontWeight: el.fontWeight,
+          color: el.color,
+          textAlign: el.textAlign,
+          zIndex: el.zIndex
+        })),
+        logoDataUrl,
+        timestamp: Date.now(),
+        isDefault: false
+      };
+
+      await saveConfigurationToCloud(config);
+      await loadCloudConfigurations();
+      setShowSaveDialog(false);
+      setConfigName('');
+      setConfigDescription('');
+      alert('✅ Configuración guardada en la nube correctamente');
     } catch (error) {
-      console.error('Error loading configuration:', error);
-      alert('❌ Error al cargar la configuración');
+      console.error('Error saving configuration to cloud:', error);
+      alert('❌ Error al guardar la configuración: ' + error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Load configuration from cloud
+  const loadConfigurationCloud = async () => {
+    if (!selectedCloudConfig) {
+      alert('❌ Por favor selecciona una configuración');
+      return;
+    }
+
+    setIsLoadingConfig(true);
+    try {
+      const config = await loadConfigurationFromCloud(selectedCloudConfig);
+      applyConfiguration(config.configuration);
+      setShowLoadDialog(false);
+      setSelectedCloudConfig('');
+      alert('✅ Configuración cargada desde la nube correctamente');
+    } catch (error) {
+      console.error('Error loading configuration from cloud:', error);
+      alert('❌ Error al cargar la configuración: ' + error);
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  };
+
+  // Delete configuration from cloud
+  const deleteConfigurationCloud = async (configId: string) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar esta configuración?')) {
+      return;
+    }
+
+    try {
+      await deleteConfigurationFromCloud(configId);
+      await loadCloudConfigurations();
+      alert('✅ Configuración eliminada correctamente');
+    } catch (error) {
+      console.error('Error deleting configuration:', error);
+      alert('❌ Error al eliminar la configuración: ' + error);
+    }
+  };
+
+  // Export configuration to file
+  const exportConfiguration = () => {
+    const config: QZConfiguration = {
+      name: configName || 'Exported Configuration',
+      description: configDescription,
+      styles,
+      elements: elements.map(el => ({
+        id: el.id,
+        type: el.type,
+        x: el.x,
+        y: el.y,
+        width: el.width,
+        height: el.height,
+        content: el.content,
+        fontSize: el.fontSize,
+        fontWeight: el.fontWeight,
+        color: el.color,
+        textAlign: el.textAlign,
+        zIndex: el.zIndex
+      })),
+      logoDataUrl,
+      timestamp: Date.now()
+    };
+
+    exportConfigurationToFile(config);
+  };
+
+  // Import configuration from file
+  const importConfiguration = async () => {
+    try {
+      const config = await importConfigurationFromFile();
+      applyConfiguration(config);
+      alert('✅ Configuración importada correctamente');
+    } catch (error) {
+      console.error('Error importing configuration:', error);
+      alert('❌ Error al importar la configuración: ' + error);
     }
   };
 
@@ -471,7 +649,7 @@ ${elementsHtml}
       return;
     }
 
-    setIsLoading(true);
+    setIsPrinting(true);
     try {
       // Import the print function dynamically to avoid SSR issues
       const { ensureQZ } = await import('../lib/print');
@@ -509,7 +687,7 @@ ${elementsHtml}
       console.error('Error printing:', error);
       alert('Error al imprimir: ' + error);
     } finally {
-      setIsLoading(false);
+      setIsPrinting(false);
     }
   };
 
@@ -875,18 +1053,51 @@ ${elementsHtml}
 
             {/* Action Buttons */}
             <div className="space-y-3">
+              {/* Local Storage Buttons */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={saveConfiguration}
+                  onClick={saveConfigurationLocal}
                   className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
                 >
-                  💾 Guardar
+                  💾 Local
                 </button>
                 <button
-                  onClick={loadConfiguration}
+                  onClick={loadConfigurationLocal}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
                 >
-                  📂 Cargar
+                  📂 Local
+                </button>
+              </div>
+
+              {/* Cloud Storage Buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
+                >
+                  ☁️ Guardar
+                </button>
+                <button
+                  onClick={() => setShowLoadDialog(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
+                >
+                  ☁️ Cargar
+                </button>
+              </div>
+
+              {/* Import/Export Buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={exportConfiguration}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
+                >
+                  📤 Exportar
+                </button>
+                <button
+                  onClick={importConfiguration}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-3 rounded-md transition-colors text-sm"
+                >
+                  📥 Importar
                 </button>
               </div>
               
@@ -899,10 +1110,10 @@ ${elementsHtml}
               
               <button
                 onClick={printTest}
-                disabled={isLoading || !selectedPrinter}
+                disabled={isPrinting || !selectedPrinter}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-3 px-4 rounded-md transition-colors"
               >
-                {isLoading ? 'Imprimiendo...' : '🖨️ Imprimir Prueba'}
+                {isPrinting ? 'Imprimiendo...' : '🖨️ Imprimir Prueba'}
               </button>
             </div>
           </div>
@@ -1046,6 +1257,140 @@ ${elementsHtml}
             </div>
           </div>
         </div>
+
+        {/* Save to Cloud Dialog */}
+        {showSaveDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">Guardar Configuración en la Nube</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <input
+                    type="text"
+                    value={configName}
+                    onChange={(e) => setConfigName(e.target.value)}
+                    placeholder="Mi configuración personalizada"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                  <textarea
+                    value={configDescription}
+                    onChange={(e) => setConfigDescription(e.target.value)}
+                    placeholder="Descripción opcional de la configuración..."
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowSaveDialog(false);
+                    setConfigName('');
+                    setConfigDescription('');
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveConfigurationCloud}
+                  disabled={isSaving || !configName.trim()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-md transition-colors"
+                >
+                  {isSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Load from Cloud Dialog */}
+        {showLoadDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">Cargar Configuración desde la Nube</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Seleccionar Configuración</label>
+                  <select
+                    value={selectedCloudConfig}
+                    onChange={(e) => setSelectedCloudConfig(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {cloudConfigs.map(config => (
+                      <option key={config.id} value={config.id}>
+                        {config.name} {config.is_default ? '(Por defecto)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {selectedCloudConfig && (
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    {(() => {
+                      const config = cloudConfigs.find(c => c.id === selectedCloudConfig);
+                      if (!config) return null;
+                      return (
+                        <div className="text-sm text-gray-600">
+                          <p><strong>Descripción:</strong> {config.description || 'Sin descripción'}</p>
+                          <p><strong>Actualizado:</strong> {new Date(config.updated_at).toLocaleString()}</p>
+                        </div>
+                      );
+                    })()} 
+                  </div>
+                )}
+                
+                {cloudConfigs.length > 0 && (
+                  <div className="text-sm text-gray-500">
+                    <p>Configuraciones disponibles: {cloudConfigs.length}</p>
+                    <div className="mt-2 max-h-32 overflow-y-auto">
+                      {cloudConfigs.map(config => (
+                        <div key={config.id} className="flex justify-between items-center py-1">
+                          <span className="truncate">{config.name}</span>
+                          <button
+                            onClick={() => deleteConfigurationCloud(config.id)}
+                            className="text-red-500 hover:text-red-700 text-xs ml-2"
+                            title="Eliminar configuración"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowLoadDialog(false);
+                    setSelectedCloudConfig('');
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={loadConfigurationCloud}
+                  disabled={isLoadingConfig || !selectedCloudConfig}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-md transition-colors"
+                >
+                  {isLoadingConfig ? 'Cargando...' : 'Cargar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
