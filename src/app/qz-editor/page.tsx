@@ -119,6 +119,8 @@ export default function QZEditor() {
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [snapGuides, setSnapGuides] = useState<{x: number[], y: number[]}>({x: [] as number[], y: [] as number[]});
+  const [showSnapGuides, setShowSnapGuides] = useState(false);
 
   useEffect(() => {
     loadPrinters();
@@ -147,8 +149,10 @@ export default function QZEditor() {
           fontWeight: styles.nameFontWeight,
           color: styles.nameColor,
           textAlign: styles.nameTextAlign,
-          width: calculateTextWidth(el.content, styles.nameFontSize, styles.nameTextAlign),
-          height: styles.nameFontSize + 4
+          ...(() => {
+            const dims = calculateTextDimensions(el.content, styles.nameFontSize, styles.nameTextAlign, 180);
+            return { width: dims.width, height: dims.height };
+          })()
         };
       }
       if (el.type === 'company') {
@@ -158,8 +162,10 @@ export default function QZEditor() {
           fontWeight: styles.companyFontWeight,
           color: styles.companyColor,
           textAlign: styles.companyTextAlign,
-          width: calculateTextWidth(el.content, styles.companyFontSize, styles.companyTextAlign),
-          height: styles.companyFontSize + 4
+          ...(() => {
+            const dims = calculateTextDimensions(el.content, styles.companyFontSize, styles.companyTextAlign, 180);
+            return { width: dims.width, height: dims.height };
+          })()
         };
       }
       if (el.type === 'ticket') {
@@ -169,8 +175,10 @@ export default function QZEditor() {
           fontWeight: styles.ticketFontWeight,
           color: styles.ticketColor,
           textAlign: styles.ticketTextAlign,
-          width: calculateTextWidth(el.content, styles.ticketFontSize, styles.ticketTextAlign),
-          height: styles.ticketFontSize + 4
+          ...(() => {
+            const dims = calculateTextDimensions(el.content, styles.ticketFontSize, styles.ticketTextAlign, 120);
+            return { width: dims.width, height: dims.height };
+          })()
         };
       }
       if (el.type === 'logo') {
@@ -187,13 +195,31 @@ export default function QZEditor() {
       styles.ticketFontSize, styles.ticketFontWeight, styles.ticketColor, styles.ticketTextAlign,
       styles.logoSize]);
 
-  // Function to calculate text width based on content and font size
-  const calculateTextWidth = (text: string, fontSize: number, textAlign: 'left' | 'center' = 'left') => {
+  // Function to calculate text width and height based on content and font size
+  const calculateTextDimensions = (text: string, fontSize: number, textAlign: 'left' | 'center' = 'left', maxWidth: number = 200) => {
     const avgCharWidth = fontSize * 0.6; // Approximate character width
-    const baseWidth = Math.max(text.length * avgCharWidth, 60); // Minimum width of 60px
+    const minWidth = 60; // Minimum width of 60px
     
-    // If centered, add extra width for better centering
-    return textAlign === 'center' ? baseWidth + 40 : baseWidth;
+    // Calculate if text needs wrapping
+    const textWidth = text.length * avgCharWidth;
+    const needsWrapping = textWidth > maxWidth;
+    
+    if (needsWrapping) {
+      // Calculate number of lines needed
+      const charsPerLine = Math.floor(maxWidth / avgCharWidth);
+      const lines = Math.ceil(text.length / charsPerLine);
+      const height = (fontSize + 4) * lines;
+      const width = textAlign === 'center' ? maxWidth + 40 : maxWidth;
+      
+      return { width, height, lines };
+    } else {
+      // Single line
+      const baseWidth = Math.max(textWidth, minWidth);
+      const width = textAlign === 'center' ? baseWidth + 40 : baseWidth;
+      const height = fontSize + 4;
+      
+      return { width, height, lines: 1 };
+    }
   };
 
   const initializeElements = () => {
@@ -203,8 +229,10 @@ export default function QZEditor() {
         type: 'name',
         x: 10,
         y: 10,
-        width: calculateTextWidth(testName, styles.nameFontSize, styles.nameTextAlign),
-        height: styles.nameFontSize + 4,
+        ...(() => {
+          const dims = calculateTextDimensions(testName, styles.nameFontSize, styles.nameTextAlign, 180);
+          return { width: dims.width, height: dims.height };
+        })(),
         content: testName,
         fontSize: styles.nameFontSize,
         fontWeight: styles.nameFontWeight,
@@ -218,8 +246,10 @@ export default function QZEditor() {
         type: 'company',
         x: 10,
         y: 35,
-        width: calculateTextWidth(testCompany, styles.companyFontSize, styles.companyTextAlign),
-        height: styles.companyFontSize + 4,
+        ...(() => {
+          const dims = calculateTextDimensions(testCompany, styles.companyFontSize, styles.companyTextAlign, 180);
+          return { width: dims.width, height: dims.height };
+        })(),
         content: testCompany,
         fontSize: styles.companyFontSize,
         fontWeight: styles.companyFontWeight,
@@ -233,8 +263,10 @@ export default function QZEditor() {
         type: 'ticket',
         x: 150,
         y: 120,
-        width: calculateTextWidth(testTicket.toString(), styles.ticketFontSize, styles.ticketTextAlign),
-        height: styles.ticketFontSize + 4,
+        ...(() => {
+          const dims = calculateTextDimensions(testTicket.toString(), styles.ticketFontSize, styles.ticketTextAlign, 120);
+          return { width: dims.width, height: dims.height };
+        })(),
         content: testTicket.toString(),
         fontSize: styles.ticketFontSize,
         fontWeight: styles.ticketFontWeight,
@@ -303,18 +335,97 @@ export default function QZEditor() {
     if (!draggedElement) return;
 
     const canvasRect = e.currentTarget.getBoundingClientRect();
-    const newX = e.clientX - canvasRect.left - dragOffset.x;
-    const newY = e.clientY - canvasRect.top - dragOffset.y;
-
+    const canvasWidth = Math.min(400, styles.pageWidth * 4);
+    const canvasHeight = Math.min(300, styles.pageHeight * 4);
+    
+    let newX = e.clientX - canvasRect.left - dragOffset.x;
+    let newY = e.clientY - canvasRect.top - dragOffset.y;
+    
+    const draggedEl = elements.find(el => el.id === draggedElement);
+    if (!draggedEl) return;
+    
+    // Snap tolerance in pixels
+    const snapTolerance = 8;
+    const guides: {x: number[], y: number[]} = { x: [], y: [] };
+    
+    // Canvas center lines
+    const canvasCenterX = canvasWidth / 2;
+    const canvasCenterY = canvasHeight / 2;
+    
+    // Element center
+    const elementCenterX = newX + draggedEl.width / 2;
+    const elementCenterY = newY + draggedEl.height / 2;
+    
+    // Check snap to canvas center
+    if (Math.abs(elementCenterX - canvasCenterX) < snapTolerance) {
+      newX = canvasCenterX - draggedEl.width / 2;
+      guides.x.push(canvasCenterX);
+    }
+    
+    if (Math.abs(elementCenterY - canvasCenterY) < snapTolerance) {
+      newY = canvasCenterY - draggedEl.height / 2;
+      guides.y.push(canvasCenterY);
+    }
+    
+    // Check snap to other elements
+    elements.forEach(el => {
+      if (el.id === draggedElement) return;
+      
+      const elCenterX = el.x + el.width / 2;
+      const elCenterY = el.y + el.height / 2;
+      
+      // Horizontal alignment with other elements
+      if (Math.abs(elementCenterX - elCenterX) < snapTolerance) {
+        newX = elCenterX - draggedEl.width / 2;
+        guides.x.push(elCenterX);
+      }
+      
+      // Vertical alignment with other elements
+      if (Math.abs(elementCenterY - elCenterY) < snapTolerance) {
+        newY = elCenterY - draggedEl.height / 2;
+        guides.y.push(elCenterY);
+      }
+      
+      // Snap to edges
+      if (Math.abs(newX - el.x) < snapTolerance) {
+        newX = el.x;
+        guides.x.push(el.x);
+      }
+      
+      if (Math.abs(newX + draggedEl.width - (el.x + el.width)) < snapTolerance) {
+        newX = el.x + el.width - draggedEl.width;
+        guides.x.push(el.x + el.width);
+      }
+      
+      if (Math.abs(newY - el.y) < snapTolerance) {
+        newY = el.y;
+        guides.y.push(el.y);
+      }
+      
+      if (Math.abs(newY + draggedEl.height - (el.y + el.height)) < snapTolerance) {
+        newY = el.y + el.height - draggedEl.height;
+        guides.y.push(el.y + el.height);
+      }
+    });
+    
+    // Constrain to canvas bounds
+    newX = Math.max(0, Math.min(newX, canvasWidth - draggedEl.width));
+    newY = Math.max(0, Math.min(newY, canvasHeight - draggedEl.height));
+    
+    setSnapGuides(guides);
+    setShowSnapGuides(guides.x.length > 0 || guides.y.length > 0);
+    
     setElements(prev => prev.map(el =>
       el.id === draggedElement
-        ? { ...el, x: Math.max(0, newX), y: Math.max(0, newY) }
+        ? { ...el, x: newX, y: newY }
         : el
     ));
   };
 
   const handleMouseUp = () => {
     setDraggedElement(null);
+    setShowSnapGuides(false);
+    setSnapGuides({x: [], y: []});
   };
 
   const selectElement = (elementId: string) => {
@@ -328,11 +439,13 @@ export default function QZEditor() {
     setElements(prev => prev.map(el => {
       if (el.id === elementId) {
         const fontSize = el.fontSize || 12;
+        const maxWidth = el.type === 'ticket' ? 120 : 180;
+        const dims = calculateTextDimensions(content, fontSize, el.textAlign, maxWidth);
         return { 
           ...el, 
           content,
-          width: calculateTextWidth(content, fontSize),
-          height: fontSize + 4
+          width: dims.width,
+          height: dims.height
         };
       }
       return el;
@@ -342,6 +455,28 @@ export default function QZEditor() {
     if (elementId === 'name') setTestName(content);
     if (elementId === 'company') setTestCompany(content);
     if (elementId === 'ticket') setTestTicket(parseInt(content) || 0);
+  };
+
+  // Center alignment function
+  const centerElementHorizontally = (elementId: string) => {
+    const canvasWidth = Math.min(400, styles.pageWidth * 4);
+    
+    setElements(prev => prev.map(el => {
+      if (el.id === elementId) {
+        const centerX = (canvasWidth - el.width) / 2;
+        return { ...el, x: centerX };
+      }
+      return el;
+    }));
+  };
+
+  const centerAllElementsHorizontally = () => {
+    const canvasWidth = Math.min(400, styles.pageWidth * 4);
+    
+    setElements(prev => prev.map(el => {
+      const centerX = (canvasWidth - el.width) / 2;
+      return { ...el, x: centerX };
+    }));
   };
 
   // Load cloud configurations
@@ -603,7 +738,7 @@ export default function QZEditor() {
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
         
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:nowrap;overflow:visible;font-family:${styles.fontFamily};">${esc(element.content)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:flex-start;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};word-wrap:break-word;overflow-wrap:break-word;hyphens:auto;line-height:1.2;font-family:${styles.fontFamily};">${esc(element.content)}</div>`;
       }
     }).join('\n');
     
@@ -1102,6 +1237,13 @@ ${elementsHtml}
               </div>
               
               <button
+                onClick={centerAllElementsHorizontally}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+              >
+                ↔️ Centrar Todo Horizontalmente
+              </button>
+              
+              <button
                 onClick={initializeElements}
                 className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
               >
@@ -1125,7 +1267,13 @@ ${elementsHtml}
             {/* Instructions and Scale indicator */}
             <div className="mb-4 space-y-2">
               <div className="text-sm text-blue-600 font-medium">
-                💡 Arrastra los elementos para moverlos libremente por el lienzo
+                💡 Arrastra los elementos para moverlos - se ajustarán automáticamente a guías de alineación
+              </div>
+              <div className="text-sm text-green-600 font-medium">
+                ↔️ Usa los botones de centrado para alinear elementos horizontalmente
+              </div>
+              <div className="text-sm text-purple-600 font-medium">
+                📏 Las líneas azules aparecen cuando los elementos se alinean entre sí o con el centro
               </div>
               <div className="text-sm text-gray-600">
                 Escala: {styles.pageWidth}mm × {styles.pageHeight}mm (vista aproximada)
@@ -1180,12 +1328,54 @@ ${elementsHtml}
                         }}
                       />
                     ) : (
-                      <span className="truncate w-full">
+                      <div 
+                        className="w-full overflow-hidden"
+                        style={{
+                          wordWrap: 'break-word',
+                          overflowWrap: 'break-word',
+                          hyphens: 'auto',
+                          lineHeight: '1.2'
+                        }}
+                      >
                         {element.content}
-                      </span>
+                      </div>
                     )}
                   </div>
                 ))}
+                
+                {/* Snap Guide Lines */}
+                {showSnapGuides && (
+                  <>
+                    {snapGuides.x.map((x, index) => (
+                      <div
+                        key={`x-guide-${index}`}
+                        className="absolute bg-blue-500 pointer-events-none"
+                        style={{
+                          left: `${x}px`,
+                          top: '0px',
+                          width: '1px',
+                          height: '100%',
+                          zIndex: 1000,
+                          opacity: 0.7
+                        }}
+                      />
+                    ))}
+                    {snapGuides.y.map((y, index) => (
+                      <div
+                        key={`y-guide-${index}`}
+                        className="absolute bg-blue-500 pointer-events-none"
+                        style={{
+                          left: '0px',
+                          top: `${y}px`,
+                          width: '100%',
+                          height: '1px',
+                          zIndex: 1000,
+                          opacity: 0.7
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             </div>
 
@@ -1240,6 +1430,14 @@ ${elementsHtml}
                           />
                         </div>
                       )}
+                      <div className="mt-2">
+                        <button
+                          onClick={() => centerElementHorizontally(selectedElement.id)}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-1 px-2 rounded text-xs transition-colors"
+                        >
+                          ↔️ Centrar Horizontalmente
+                        </button>
+                      </div>
                     </div>
                   );
                 })()}
