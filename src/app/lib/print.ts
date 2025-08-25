@@ -57,13 +57,13 @@ export async function printLabelHtml(printerName: string, name: string, company:
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(name)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:95%;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};text-align:center;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(name)}</div>`;
       } else if (element.type === 'company') {
         const fontSize = element.fontSize || 12;
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(company)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:95%;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};text-align:center;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(company)}</div>`;
       } else if (element.type === 'ticket') {
         const fontSize = element.fontSize || 12;
         const fontWeight = element.fontWeight || 400;
