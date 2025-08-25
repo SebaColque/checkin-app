@@ -196,137 +196,127 @@ export async function printLabelHtml(printerName: string, name: string, company:
 
   const savedConfig = loadSavedConfig();
   let html: string;
-  let pageWidth = 55; // Default fallback
-  let pageHeight = 44; // Default fallback
+  let pageWidth = 55;
+  let pageHeight = 44;
 
   if (savedConfig && savedConfig.styles) {
-    const { styles } = savedConfig;
+    const { styles, elements = [], logoDataUrl } = savedConfig;
     pageWidth = styles.pageWidth;
     pageHeight = styles.pageHeight;
+
+    // Buscar elementos configurados en el editor
+    const logoEl    = elements.find((e: any) => e.type === 'logo');
+    const nameEl    = elements.find((e: any) => e.type === 'name');
+    const companyEl = elements.find((e: any) => e.type === 'company');
+    const ticketEl  = elements.find((e: any) => e.type === 'ticket');
+
+    // Logo (usa mm del editor si existen; sino, fallback centrado arriba)
+    let logoHtml = '';
+    if (logoEl?.content || logoDataUrl) {
+      if (logoEl) {
+        const xMm = (logoEl.x / 4).toFixed(2);
+        const yMm = (logoEl.y / 4).toFixed(2);
+        const wMm = (logoEl.width / 4).toFixed(2);
+        const hMm = (logoEl.height / 4).toFixed(2);
+        logoHtml = `<img src="${logoEl.content}" style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${wMm}mm;height:${hMm}mm;object-fit:contain;" />`;
+      } else {
+        // centrado por defecto
+        logoHtml = `<img src="${logoDataUrl}" style="position:absolute;left:0;top:2mm;width:100%;height:8mm;object-fit:contain;" />`;
+      }
+    }
+
+    // Top del bloque de textos: tomamos el y del 'name' si existe, o del 'company', o 12mm
+    const blockTop =
+      nameEl ? (nameEl.y / 4).toFixed(2)
+      : companyEl ? (companyEl.y / 4).toFixed(2)
+      : '12';
+
+    const nameSize   = nameEl?.fontSize ?? 14;
+    const nameWeight = nameEl?.fontWeight ?? 600;
+    const nameColor  = nameEl?.color ?? '#000';
+    const nameAlign  = (nameEl?.textAlign ?? 'center') as 'left'|'center'|'right';
+
+    const compSize   = companyEl?.fontSize ?? 12;
+    const compWeight = companyEl?.fontWeight ?? 400;
+    const compColor  = companyEl?.color ?? '#666';
+    const compAlign  = (companyEl?.textAlign ?? 'center') as 'left'|'center'|'right';
+
+    // Ticket: si el editor tiene posición, la usamos; sino abajo-derecha
+    let ticketHtml = '';
+    if (ticketEl) {
+      const xMm = (ticketEl.x / 4).toFixed(2);
+      const yMm = (ticketEl.y / 4).toFixed(2);
+      const wMm = (ticketEl.width / 4).toFixed(2);
+      const hMm = (ticketEl.height / 4).toFixed(2);
+      const tSize = ticketEl.fontSize ?? 18;
+      const tWeight = ticketEl.fontWeight ?? 700;
+      const tColor = ticketEl.color ?? '#000';
+      const tAlign = (ticketEl.textAlign ?? 'center') as 'left'|'center'|'right';
+      const jc = tAlign === 'center' ? 'center' : (tAlign === 'right' ? 'flex-end' : 'flex-start');
+      ticketHtml = `
+        <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${wMm}mm;height:${hMm}mm;display:flex;align-items:center;justify-content:${jc};
+                    font-size:${tSize}pt;font-weight:${tWeight};color:${tColor};font-family:${styles.fontFamily};">
+          ${ticket}
+        </div>`;
+    } else {
+      ticketHtml = `<div class="ticket">${ticket}</div>`;
+    }
 
     html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    @page { 
-      size: ${pageWidth}mm ${pageHeight}mm; 
-      margin: ${styles.pageMargin}mm; 
-    }
-    * { 
-      box-sizing: border-box; 
-      margin: 0;
-      padding: 0;
-    }
-    body { 
-      width: ${pageWidth}mm; 
-      height: ${pageHeight}mm; 
-      position: relative;
-      font-family: ${styles.fontFamily};
-      overflow: hidden;
-    }
-    .container {
-      width: 100%;
-      height: 100%;
-      position: relative;
-    }
+    @page { size: ${pageWidth}mm ${pageHeight}mm; margin: ${styles.pageMargin}mm; }
+    * { box-sizing: border-box; margin:0; padding:0; }
+    body { width:${pageWidth}mm; height:${pageHeight}mm; position:relative; overflow:hidden; font-family:${styles.fontFamily}; }
+    .container { width:100%; height:100%; position:relative; }
     .block {
-      position: absolute;
-      top: 12mm; /* ajustá según necesites */
-      left: 0;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
+      position:absolute; left:0; top:${blockTop}mm; width:100%;
+      display:flex; flex-direction:column; align-items:center; text-align:center;
     }
     .name {
-      font-size: 14pt;
-      font-weight: 600;
-      white-space: normal;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      line-height: 1.2;
+      font-size:${nameSize}pt; font-weight:${nameWeight}; color:${nameColor};
+      text-align:${nameAlign}; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; line-height:1.2;
     }
     .company {
-      font-size: 12pt;
-      color: #666;
-      margin-top: 1mm;
-      white-space: normal;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      line-height: 1.2;
+      font-size:${compSize}pt; font-weight:${compWeight}; color:${compColor}; margin-top:1mm;
+      text-align:${compAlign}; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; line-height:1.2;
     }
-    .ticket {
-      position: absolute;
-      bottom: 2mm;
-      right: 2mm;
-      font-size: 18pt;
-      font-weight: 700;
-    }
+    .ticket { position:absolute; bottom:2mm; right:2mm; font-size:18pt; font-weight:700; }
   </style>
 </head>
 <body>
   <div class="container">
+    ${logoHtml}
     <div class="block">
       <div class="name">${esc(name)}</div>
       <div class="company">${esc(company)}</div>
     </div>
-    <div class="ticket">${ticket}</div>
+    ${ticketHtml}
   </div>
 </body>
 </html>`;
   } else {
-    // Fallback si no hay configuración guardada
+    // Fallback sin config guardada
     html = `<!doctype html>
-  <html><head>
-    <meta charset="utf-8">
-    <style>
-      @page { size: 55mm 44mm; margin: 0; padding: 0; }
-      body { margin:0; padding:0; width:55mm; height:44mm; overflow:hidden; font-family:Arial; position:relative; }
-      .block {
-        position: absolute;
-        top: 12mm;
-        left: 0;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-      }
-      .name {
-        font-size: 14pt;
-        font-weight: 600;
-        white-space: normal;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        line-height: 1.2;
-      }
-      .company {
-        font-size: 12pt;
-        color: #666;
-        margin-top: 1mm;
-        white-space: normal;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        line-height: 1.2;
-      }
-      .ticket {
-        position: absolute;
-        bottom: 2mm;
-        right: 2mm;
-        font-size: 18pt;
-        font-weight: 700;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="block">
-      <div class="name">${esc(name)}</div>
-      <div class="company">${esc(company)}</div>
-    </div>
-    <div class="ticket">${ticket}</div>
-  </body></html>`;
+<html><head><meta charset="utf-8">
+<style>
+  @page { size:55mm 44mm; margin:0; }
+  body { margin:0; width:55mm; height:44mm; overflow:hidden; position:relative; font-family:Arial; }
+  .logo { position:absolute; left:0; top:2mm; width:100%; height:8mm; object-fit:contain; }
+  .block { position:absolute; left:0; top:12mm; width:95%; display:flex; flex-direction:column; align-items:center; text-align:center; }
+  .name { font-size:14pt; font-weight:600; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
+  .company { font-size:12pt; color:#666; margin-top:1mm; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
+  .ticket { position:absolute; bottom:2mm; right:2mm; font-size:18pt; font-weight:700; }
+</style></head>
+<body>
+  <div class="block">
+    <div class="name">${esc(name)}</div>
+    <div class="company">${esc(company)}</div>
+  </div>
+  <div class="ticket">${ticket}</div>
+</body></html>`;
   }
 
   const cfg = window.qz.configs.create(printerName || undefined, {
@@ -338,15 +328,10 @@ export async function printLabelHtml(printerName: string, name: string, company:
     orientation: 'portrait'
   });
 
-  const payload = [{
-    type: 'pixel',
-    format: 'html',
-    flavor: 'plain',
-    data: html,
-  }];
-
+  const payload = [{ type: 'pixel', format: 'html', flavor: 'plain', data: html }];
   await window.qz.print(cfg, payload);
 }
+
 
 function esc(s: string) {
   return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'} as any)[m]);
