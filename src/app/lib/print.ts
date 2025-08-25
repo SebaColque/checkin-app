@@ -218,7 +218,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
         const yMm = (logoEl.y / 4).toFixed(2);
         const wMm = (logoEl.width / 4).toFixed(2);
         const hMm = (logoEl.height / 4).toFixed(2);
-        logoHtml = `<img src="${logoEl.content}" style="position:absolute;left:${xMm}mm;top:-10mm;width:${wMm}mm;height:${hMm}mm;object-fit:contain;" />`;
+        logoHtml = `<img src="${logoEl.content}" style="position:absolute;left:${xMm}mm;top:0mm;width:${wMm}mm;height:${hMm}mm;object-fit:contain;" />`;
       } else {
         // centrado por defecto
         logoHtml = `<img src="${logoDataUrl}" style="position:absolute;left:0;top:2mm;width:100%;height:8mm;object-fit:contain;" />`;
@@ -227,7 +227,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
 
     // Top del bloque de textos: tomamos el y del 'name' si existe, o del 'company', o 12mm
 
-    const blockTop = '15'
+    const blockTop = '12'
 
       // nameEl ? (nameEl.y / 4).toFixed(2)
       // : companyEl ? (companyEl.y / 4).toFixed(2)
