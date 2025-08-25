@@ -57,19 +57,19 @@ export async function printLabelHtml(printerName: string, name: string, company:
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:nowrap;overflow:visible;font-family:${styles.fontFamily};">${esc(name)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(name)}</div>`;
       } else if (element.type === 'company') {
         const fontSize = element.fontSize || 12;
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:nowrap;overflow:visible;font-family:${styles.fontFamily};">${esc(company)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${esc(company)}</div>`;
       } else if (element.type === 'ticket') {
         const fontSize = element.fontSize || 12;
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'center';
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:nowrap;overflow:visible;font-family:${styles.fontFamily};">${ticket}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:center;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;font-family:${styles.fontFamily};">${ticket}</div>`;
       } else if (element.type === 'logo') {
         return `      <img src="${element.content}" style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;object-fit:contain;" />`;
       }
@@ -136,8 +136,8 @@ ${elementsHtml}
   </head>
   <body>
     <div style="width:100%;height:100%;padding:2mm;display:flex;flex-direction:column;justify-content:flex-start;font-family:Arial;position:relative">
-      <div style="font-size:14pt;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1mm">${esc(name)}</div>
-      <div style="font-size:12pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#666">${esc(company)}</div>
+      <div style="font-size:14pt;font-weight:600;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;text-overflow:ellipsis;margin-bottom:1mm">${esc(name)}</div>
+      <div style="font-size:12pt;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;text-overflow:ellipsis;color:#666">${esc(company)}</div>
       <div style="position:absolute;bottom:2mm;right:2mm;font-size:18pt;font-weight:700">${ticket}</div>
     </div>
   </body></html>`;
