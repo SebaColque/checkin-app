@@ -226,10 +226,10 @@ export async function printLabelHtml(printerName: string, name: string, company:
     }
 
     // Top del bloque de textos: tomamos el y del 'name' si existe, o del 'company', o 12mm
-    const blockTop =
-      nameEl ? (nameEl.y / 4).toFixed(2)
-      : companyEl ? (companyEl.y / 4).toFixed(2)
-      : '12';
+    const blockTop = '15'
+      // nameEl ? (nameEl.y / 4).toFixed(2)
+      // : companyEl ? (companyEl.y / 4).toFixed(2)
+      // : '12';
 
     const nameSize   = nameEl?.fontSize ?? 14;
     const nameWeight = nameEl?.fontWeight ?? 600;
@@ -270,9 +270,9 @@ export async function printLabelHtml(printerName: string, name: string, company:
     @page { size: ${pageWidth}mm ${pageHeight}mm; margin: ${styles.pageMargin}mm; }
     * { box-sizing: border-box; margin:0; padding:0; }
     body { width:${pageWidth}mm; height:${pageHeight}mm; position:relative; overflow:hidden; font-family:${styles.fontFamily}; }
-    .container { width:100%; height:100%; position:relative; }
+    .container { width:95%; height:100%; position:relative; }
     .block {
-      position:absolute; left:0; top:${blockTop}mm; width:100%;
+      position:absolute; left:0; top:${blockTop}mm; width:95%;
       display:flex; flex-direction:column; align-items:center; text-align:center;
     }
     .name {
@@ -304,7 +304,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
 <style>
   @page { size:55mm 44mm; margin:0; }
   body { margin:0; width:55mm; height:44mm; overflow:hidden; position:relative; font-family:Arial; }
-  .logo { position:absolute; left:0; top:2mm; width:100%; height:8mm; object-fit:contain; }
+  .logo { position:absolute; left:0; top:-10mm; width:100%; height:8mm; object-fit:contain; }
   .block { position:absolute; left:0; top:12mm; width:95%; display:flex; flex-direction:column; align-items:center; text-align:center; }
   .name { font-size:14pt; font-weight:600; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
   .company { font-size:12pt; color:#666; margin-top:1mm; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
