@@ -218,7 +218,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
         const yMm = (logoEl.y / 4).toFixed(2);
         const wMm = (logoEl.width / 4).toFixed(2);
         const hMm = (logoEl.height / 4).toFixed(2);
-        logoHtml = `<img src="${logoEl.content}" style="position:absolute;left:${xMm}mm;top:0mm;width:${wMm}mm;height:${hMm}mm;object-fit:contain;" />`;
+        logoHtml = `<img src="${logoEl.content}" style="position:absolute;left:${xMm}mm;top:-3mm;width:${wMm}mm;height:${hMm}mm;object-fit:contain;" />`;
       } else {
         // centrado por defecto
         logoHtml = `<img src="${logoDataUrl}" style="position:absolute;left:0;top:2mm;width:100%;height:8mm;object-fit:contain;" />`;
@@ -272,9 +272,12 @@ export async function printLabelHtml(printerName: string, name: string, company:
     @page { size: ${pageWidth}mm ${pageHeight}mm; margin: ${styles.pageMargin}mm; }
     * { box-sizing: border-box; margin:0; padding:0; }
     body { width:${pageWidth}mm; height:${pageHeight}mm; position:relative; overflow:hidden; font-family:${styles.fontFamily}; }
-    .container { width:100%; height:100%; position:relative; }
+    .container { width:100%; height:100%; position:relative; display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;  }
     .block {
-      position:absolute; left:0; top:${blockTop}mm; width:100%;
+       left:0; width:100%;
       display:flex; flex-direction:column; align-items:center; text-align:center;
     }
     .name {
