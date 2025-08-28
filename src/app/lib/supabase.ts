@@ -10,6 +10,8 @@ export type Attendee = {
   id: string;
   full_name: string;
   company?: string | null;
+  email?: string | null;
+  phone?: string | null;
   checked_in_at?: string | null;
   ticket_no?: number | null;
   station?: string | null;

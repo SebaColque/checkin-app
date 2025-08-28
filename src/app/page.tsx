@@ -60,7 +60,7 @@ export default function Page() {
       setLoading(true);
       const { data, error } = await supabase
         .from('attendees')
-        .select('id, full_name, company, checked_in_at, ticket_no, station')
+        .select('id, full_name, company, email, phone, checked_in_at, ticket_no, station')
         .order('full_name');
 
       if (!abort) {
@@ -569,6 +569,8 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   const [rows, setRows] = useState<any[]>([]);
   const [nameCol, setNameCol] = useState('');
   const [companyCol, setCompanyCol] = useState('');
+  const [emailCol, setEmailCol] = useState('');
+  const [phoneCol, setPhoneCol] = useState('');
   const [skipDupById, setSkipDupById] = useState(true);
 
   async function handleFile(f: File) {
@@ -584,6 +586,8 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     const guess = (alts: string[]) => headers.find((h: string) => alts.some(a => h.includes(a)));
     setNameCol(guess(['nombre', 'name', 'apellido']) || headers[0] || '');
     setCompanyCol(guess(['empresa', 'company', 'compañia', 'organizacion']) || '');
+    setEmailCol(guess(['email', 'correo', 'mail']) || '');
+    setPhoneCol(guess(['telefono', 'phone', 'celular', 'movil']) || '');
   }
 
   async function doImport() {
@@ -591,7 +595,9 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
 
     const subset = rows.slice(0, 5000).map(r => ({
       full_name: String(r[nameCol] ?? '').trim(),
-      company: companyCol ? String(r[companyCol] ?? '').trim() || null : null
+      company: companyCol ? String(r[companyCol] ?? '').trim() || null : null,
+      email: emailCol ? String(r[emailCol] ?? '').trim() || null : null,
+      phone: phoneCol ? String(r[phoneCol] ?? '').trim() || null : null
     })).filter(x => x.full_name);
 
     if (!subset.length) return alert('No hay filas válidas');
@@ -738,6 +744,36 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
                       {columns.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna EMAIL
+                    </label>
+                    <select value={emailCol} onChange={e=>setEmailCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Opcional —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna TELÉFONO
+                    </label>
+                    <select value={phoneCol} onChange={e=>setPhoneCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Opcional —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                 </div>
                 
                 
@@ -837,15 +873,22 @@ function ResetBlock({ onReset }: { onReset: () => void }) {
 function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
   const add = async () => {
-    const payload = { full_name: name.trim(), company: company.trim() || null };
+    const payload = { 
+      full_name: name.trim(), 
+      company: company.trim() || null,
+      email: email.trim() || null,
+      phone: phone.trim() || null
+    };
     if (!payload.full_name) { alert('Nombre requerido'); return; }
     const { data, error } = await supabase.from('attendees')
       .insert(payload).select().single();
     if (error) { alert('Error al agregar'); console.error(error); return; }
     onAdded(data as any);
-    setName(''); setCompany('');
+    setName(''); setCompany(''); setEmail(''); setPhone('');
   };
 
   return (
@@ -900,6 +943,42 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
             placeholder="Nombre de la empresa" 
             value={company} 
             onChange={e=>setCompany(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            Email
+          </label>
+          <input 
+            type="email"
+            placeholder="correo@ejemplo.com" 
+            value={email} 
+            onChange={e=>setEmail(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            Teléfono
+          </label>
+          <input 
+            type="tel"
+            placeholder="Número de teléfono" 
+            value={phone} 
+            onChange={e=>setPhone(e.target.value)}
             style={{width: '100%', fontSize: '14px'}}
           />
         </div>
