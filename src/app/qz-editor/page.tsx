@@ -48,11 +48,13 @@ interface PrintStyles {
   nameFontWeight: number;
   nameColor: string;
   nameMarginBottom: number;
+  nameTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   
   // Company styles
   companyFontSize: number;
   companyColor: string;
   companyFontWeight: number;
+  companyTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   
   // Ticket styles
   ticketFontSize: number;
@@ -83,9 +85,11 @@ const defaultStyles: PrintStyles = {
   nameFontWeight: 600,
   nameColor: '#000000',
   nameMarginBottom: 1,
+  nameTextCase: 'none',
   companyFontSize: 12,
   companyColor: '#666666',
   companyFontWeight: 400,
+  companyTextCase: 'none',
   ticketFontSize: 18,
   ticketFontWeight: 700,
   ticketColor: '#000000',
@@ -96,6 +100,23 @@ const defaultStyles: PrintStyles = {
   nameTextAlign: 'left',
   companyTextAlign: 'left',
   ticketTextAlign: 'center'
+};
+
+// Utility function to apply text case transformations
+const applyTextCase = (text: string, textCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize'): string => {
+  switch (textCase) {
+    case 'uppercase':
+      return text.toUpperCase();
+    case 'lowercase':
+      return text.toLowerCase();
+    case 'capitalize':
+      return text.split(' ').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+    case 'none':
+    default:
+      return text;
+  }
 };
 
 export default function QZEditor() {
@@ -132,12 +153,12 @@ export default function QZEditor() {
   // Re-initialize elements when test data changes
   useEffect(() => {
     setElements(prev => prev.map(el => {
-      if (el.type === 'name') return { ...el, content: testName };
-      if (el.type === 'company') return { ...el, content: testCompany };
+      if (el.type === 'name') return { ...el, content: applyTextCase(testName, styles.nameTextCase) };
+      if (el.type === 'company') return { ...el, content: applyTextCase(testCompany, styles.companyTextCase) };
       if (el.type === 'ticket') return { ...el, content: testTicket.toString() };
       return el;
     }));
-  }, [testName, testCompany, testTicket]);
+  }, [testName, testCompany, testTicket, styles.nameTextCase, styles.companyTextCase]);
 
   // Update element styles when styles change
   useEffect(() => {
@@ -233,7 +254,7 @@ export default function QZEditor() {
           const dims = calculateTextDimensions(testName, styles.nameFontSize, styles.nameTextAlign, 180);
           return { width: dims.width, height: dims.height };
         })(),
-        content: testName,
+        content: applyTextCase(testName, styles.nameTextCase),
         fontSize: styles.nameFontSize,
         fontWeight: styles.nameFontWeight,
         color: styles.nameColor,
@@ -250,7 +271,7 @@ export default function QZEditor() {
           const dims = calculateTextDimensions(testCompany, styles.companyFontSize, styles.companyTextAlign, 180);
           return { width: dims.width, height: dims.height };
         })(),
-        content: testCompany,
+        content: applyTextCase(testCompany, styles.companyTextCase),
         fontSize: styles.companyFontSize,
         fontWeight: styles.companyFontWeight,
         color: styles.companyColor,
@@ -971,6 +992,19 @@ ${elementsHtml}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Formato de Texto</label>
+                  <select
+                    value={styles.nameTextCase}
+                    onChange={(e) => updateStyle('nameTextCase', e.target.value as 'none' | 'uppercase' | 'lowercase' | 'capitalize')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Sin cambios</option>
+                    <option value="uppercase">MAYÚSCULAS</option>
+                    <option value="lowercase">minúsculas</option>
+                    <option value="capitalize">Tipo Oración</option>
+                  </select>
+                </div>
                 <div className="col-span-2">
                   <label className="flex items-center space-x-2">
                     <input
@@ -1021,6 +1055,19 @@ ${elementsHtml}
                     className="w-full h-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div> */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Formato de Texto</label>
+                  <select
+                    value={styles.companyTextCase}
+                    onChange={(e) => updateStyle('companyTextCase', e.target.value as 'none' | 'uppercase' | 'lowercase' | 'capitalize')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Sin cambios</option>
+                    <option value="uppercase">MAYÚSCULAS</option>
+                    <option value="lowercase">minúsculas</option>
+                    <option value="capitalize">Tipo Oración</option>
+                  </select>
+                </div>
                 <div className="col-span-2">
                   <label className="flex items-center space-x-2">
                     <input

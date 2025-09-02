@@ -237,11 +237,13 @@ export async function printLabelHtml(printerName: string, name: string, company:
     const nameWeight = nameEl?.fontWeight ?? 600;
     const nameColor  = nameEl?.color ?? '#000';
     const nameAlign  = (nameEl?.textAlign ?? 'center') as 'left'|'center'|'right';
+    const nameTextCase = styles.nameTextCase ?? 'none';
 
     const compSize   = companyEl?.fontSize ?? 12;
     const compWeight = companyEl?.fontWeight ?? 400;
     const compColor  = companyEl?.color ?? '#666';
     const compAlign  = (companyEl?.textAlign ?? 'center') as 'left'|'center'|'right';
+    const companyTextCase = styles.companyTextCase ?? 'none';
 
     // Ticket: si el editor tiene posición, la usamos; sino abajo-derecha
     let ticketHtml = '';
@@ -295,8 +297,8 @@ export async function printLabelHtml(printerName: string, name: string, company:
   <div class="container">
     ${logoHtml}
     <div class="block">
-      <div class="name">${esc(name)}</div>
-      <div class="company">${esc(company)}</div>
+      <div class="name">${esc(applyTextCase(name, nameTextCase))}</div>
+      <div class="company">${esc(applyTextCase(company, companyTextCase))}</div>
     </div>
     ${ticketHtml}
   </div>
@@ -337,6 +339,23 @@ export async function printLabelHtml(printerName: string, name: string, company:
   await window.qz.print(cfg, payload);
 }
 
+
+// Utility function to apply text case transformations
+const applyTextCase = (text: string, textCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize'): string => {
+  switch (textCase) {
+    case 'uppercase':
+      return text.toUpperCase();
+    case 'lowercase':
+      return text.toLowerCase();
+    case 'capitalize':
+      return text.split(' ').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+    case 'none':
+    default:
+      return text;
+  }
+};
 
 function esc(s: string) {
   return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'} as any)[m]);
