@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, Attendee } from './lib/supabase';
 import { printLabelHtml, ensureQZ, listPrinters, getDefaultPrinter } from './lib/print';
+import { exportAttendeesToExcel, generateExcelFilename } from './lib/excel-export';
 
 export default function Page() {
   const [q, setQ] = useState('');
@@ -170,6 +171,22 @@ export default function Page() {
     setEditCompany('');
   };
 
+  const handleExportExcel = async () => {
+    if (allAttendees.length === 0) {
+      alert('No hay participantes para exportar');
+      return;
+    }
+
+    try {
+      const filename = generateExcelFilename();
+      await exportAttendeesToExcel(allAttendees, filename);
+      alert(`Excel exportado exitosamente: ${filename}`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Error al exportar a Excel');
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -333,6 +350,27 @@ export default function Page() {
               }}
             >
               🖨️ Prueba de Impresión
+            </button>
+            <button 
+              onClick={handleExportExcel}
+              style={{
+                padding: '10px 16px',
+                background: '#16a34a',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              📊 Exportar Excel
             </button>
           </div>
         </div>
