@@ -13,6 +13,7 @@ export default function Page() {
   const [editName, setEditName] = useState('');
   const [editCompany, setEditCompany] = useState('');
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [checkingInIds, setCheckingInIds] = useState<Set<string>>(new Set());
 
   // 1) INIT seguro en SSR: nunca tocar localStorage en el render inicial
   const [station, setStation] = useState<string>('N1');
@@ -127,32 +128,58 @@ export default function Page() {
   const pending = useMemo(() => filteredAttendees.filter(r => !r.checked_in_at), [filteredAttendees]);
 
   const checkIn = async (r: Attendee) => {
-    const { data, error } = await supabase
-      .rpc('check_in_attendee', { p_id: r.id, p_station: station });
-  
-    if (error) {
-      console.error('RPC error', error);
-      alert(`Error en check-in: ${error.message || 'ver consola'}`);
-      return;
+    // Prevent multiple clicks by adding to checking set
+    if (checkingInIds.has(r.id)) return;
+    
+    setCheckingInIds(prev => new Set(prev).add(r.id));
+    
+    try {
+      const { data, error } = await supabase
+        .rpc('check_in_attendee', { p_id: r.id, p_station: station });
+    
+      if (error) {
+        console.error('RPC error', error);
+        alert(`Error en check-in: ${error.message || 'ver consola'}`);
+        return;
+      }
+    
+      const row = data && data[0];
+      if (!row) {
+        alert('No se recibió respuesta del servidor');
+        return;
+      }
+    
+      // Si ya estaba checkeado, ticket_no puede venir con valor (perfecto).
+      // Si viniera null, avisamos.
+      if (row.ticket_no == null) {
+        alert('Participante sin número asignado (ya estaba sin ticket?)');
+        return;
+      }
+    
+      await printLabelHtml(printer, r.full_name, r.company || '', row.ticket_no);
+    
+      // Optimistic update: immediately update local state
+      // Realtime will eventually sync, but this ensures immediate UI feedback
+      const updatedAttendee: Attendee = {
+        ...r,
+        checked_in_at: new Date().toISOString(),
+        ticket_no: row.ticket_no,
+        station: station
+      };
+      
+      setAllAttendees(prev => 
+        prev.map(a => a.id === r.id ? updatedAttendee : a)
+      );
+    } finally {
+      // Remove from checking set after 3 seconds to prevent rapid clicks
+      setTimeout(() => {
+        setCheckingInIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(r.id);
+          return newSet;
+        });
+      }, 3000);
     }
-  
-    const row = data && data[0];
-    if (!row) {
-      alert('No se recibió respuesta del servidor');
-      return;
-    }
-  
-    // Si ya estaba checkeado, ticket_no puede venir con valor (perfecto).
-    // Si viniera null, avisamos.
-    if (row.ticket_no == null) {
-      alert('Participante sin número asignado (ya estaba sin ticket?)');
-      return;
-    }
-  
-    await printLabelHtml(printer, r.full_name, r.company || '', row.ticket_no);
-  
-    // No need to update local state - realtime will handle it
-    // The database update will trigger the realtime subscription
   };
 
   const reprint = async (r: Attendee) => {
@@ -639,9 +666,14 @@ export default function Page() {
                           <button 
                             className="success"
                             onClick={() => checkIn(r)}
-                            style={{minWidth: '120px'}}
+                            disabled={checkingInIds.has(r.id)}
+                            style={{
+                              minWidth: '120px',
+                              opacity: checkingInIds.has(r.id) ? 0.6 : 1,
+                              cursor: checkingInIds.has(r.id) ? 'not-allowed' : 'pointer'
+                            }}
                           >
-                            ✓ Registrar
+                            {checkingInIds.has(r.id) ? '⏳ Procesando...' : '✓ Registrar'}
                           </button>
                         )}
                       </>
@@ -906,15 +938,50 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
 
 /** ----- Componente: Reset System ----- */
 function ResetBlock({ onReset }: { onReset: () => void }) {
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [clickCount, setClickCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+
+  const REQUIRED_CLICKS = 5;
+  const TIMEOUT_DURATION = 3000; // 3 seconds
+
+  const handleClick = () => {
+    if (loading) return;
+
+    // Clear existing timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    const newClickCount = clickCount + 1;
+    setClickCount(newClickCount);
+
+    if (newClickCount >= REQUIRED_CLICKS) {
+      // Enable reset functionality
+      handleReset();
+    } else {
+      // Set timeout to reset counter after inactivity
+      const newTimeoutId = setTimeout(() => {
+        setClickCount(0);
+        setTimeoutId(null);
+      }, TIMEOUT_DURATION);
+      setTimeoutId(newTimeoutId);
+    }
+  };
 
   const handleReset = async () => {
     if (!confirm('¿Estás seguro? Esto eliminará TODOS los participantes de la tabla y reiniciará la numeración de tickets. Esta acción NO se puede deshacer.')) {
+      setClickCount(0);
+      if (timeoutId) clearTimeout(timeoutId);
+      setTimeoutId(null);
       return;
     }
 
     setLoading(true);
+    setClickCount(0);
+    if (timeoutId) clearTimeout(timeoutId);
+    setTimeoutId(null);
+
     try {
       const response = await fetch('/api/reset', {
         method: 'POST',
@@ -939,31 +1006,44 @@ function ResetBlock({ onReset }: { onReset: () => void }) {
     }
   };
 
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [timeoutId]);
+
+  const isEnabled = clickCount >= REQUIRED_CLICKS;
+  const progress = Math.min(clickCount, REQUIRED_CLICKS);
+
   return (
     <div style={{
       padding: '12px 20px',
-      background: '#dc2626',
+      background: isEnabled ? '#dc2626' : '#6b7280',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
       fontSize: '14px',
       fontWeight: '500',
-      cursor: loading ? 'not-allowed' : 'pointer',
+      cursor: loading || !isEnabled ? 'not-allowed' : 'pointer',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       gap: '8px',
       whiteSpace: 'nowrap',
       marginTop: '100px',
-      opacity: loading ? 0.6 : 1
+      opacity: loading ? 0.6 : 1,
+      transition: 'all 0.3s ease',
+      minWidth: '180px'
     }}>
       <button 
-        onClick={handleReset}
+        onClick={handleClick}
         disabled={loading}
         style={{
           background: 'none',
           border: 'none',
           color: 'white',
-          cursor: loading ? 'not-allowed' : 'pointer',
+          cursor: loading || !isEnabled ? 'not-allowed' : 'pointer',
           fontSize: '14px',
           fontWeight: '500',
           display: 'flex',
@@ -972,8 +1052,43 @@ function ResetBlock({ onReset }: { onReset: () => void }) {
           padding: '0'
         }}
       >
-        {loading ? '⏳' : '🔄'} {loading ? 'Reseteando...' : 'Resetear Sistema'}
+        {loading ? '⏳' : isEnabled ? '🔄' : '🔒'} 
+        {loading ? 'Reseteando...' : isEnabled ? 'Resetear Sistema' : 'Resetear Sistema'}
       </button>
+      
+      {!loading && (
+        <div style={{
+          fontSize: '12px',
+          opacity: 0.9,
+          textAlign: 'center'
+        }}>
+          {/* {clickCount === 0 ? (
+            'Haz clic 5 veces para habilitar'
+          ) : clickCount < REQUIRED_CLICKS ? (
+            `${progress}/${REQUIRED_CLICKS} clics - Continúa...`
+          ) : (
+            '¡Habilitado! Haz clic para resetear'
+          )} */}
+        </div>
+      )}
+      
+      {/* {!loading && clickCount > 0 && clickCount < REQUIRED_CLICKS && (
+        <div style={{
+          width: '100%',
+          height: '4px',
+          background: 'rgba(255,255,255,0.3)',
+          borderRadius: '2px',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            width: `${(progress / REQUIRED_CLICKS) * 100}%`,
+            height: '100%',
+            background: 'white',
+            borderRadius: '2px',
+            transition: 'width 0.2s ease'
+          }} />
+        </div>
+      )} */}
     </div>
   );
 }
