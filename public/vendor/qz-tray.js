@@ -2621,7 +2621,7 @@ var qz = (function() {
                 if (_qz.tools.versionCompare(2, 2, 2) < 0) {
                     return _qz.tools.promise(function(resolve, reject) {
                         _qz.websocket.dataPromise('networking.device', { hostname: hostname, port: port }).then(function(device) {
-                            console.log(device);
+                            // console.log(device);
                             resolve(device.hostname);
                         });
                     });

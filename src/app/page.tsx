@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase, Attendee } from './lib/supabase';
 import { printLabelHtml, ensureQZ, listPrinters, getDefaultPrinter } from './lib/print';
 import { exportAttendeesToExcel, generateExcelFilename } from './lib/excel-export';
+import { useRealtime } from './lib/useRealtime';
 
 export default function Page() {
   const [q, setQ] = useState('');
@@ -11,6 +12,7 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCompany, setEditCompany] = useState('');
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   // 1) INIT seguro en SSR: nunca tocar localStorage en el render inicial
   const [station, setStation] = useState<string>('N1');
@@ -53,6 +55,44 @@ export default function Page() {
     if (!printer) return alert('Elegí una impresora');
     await printLabelHtml(printer, 'PRUEBA', 'EMPRESA TEST', 123);  // crea un PDF si usás “Print to PDF”
   };
+
+  // Realtime handlers
+  const handleAttendeesUpdate = (attendees: Attendee[]) => {
+    setAllAttendees(attendees);
+    setLoading(false);
+  };
+
+  const handleAttendeeInsert = (newAttendee: Attendee) => {
+    setAllAttendees(prev => {
+      // Check if attendee already exists to avoid duplicates
+      const exists = prev.some(a => a.id === newAttendee.id);
+      if (exists) return prev;
+      return [newAttendee, ...prev].sort((a, b) => a.full_name.localeCompare(b.full_name));
+    });
+  };
+
+  const handleAttendeeUpdate = (updatedAttendee: Attendee) => {
+    setAllAttendees(prev => 
+      prev.map(a => a.id === updatedAttendee.id ? updatedAttendee : a)
+    );
+  };
+
+  const handleAttendeeDelete = (deletedId: string) => {
+    setAllAttendees(prev => prev.filter(a => a.id !== deletedId));
+  };
+
+  // Setup realtime subscription
+  const { refreshAllData, isConnected } = useRealtime({
+    onAttendeesUpdate: handleAttendeesUpdate,
+    onAttendeeInsert: handleAttendeeInsert,
+    onAttendeeUpdate: handleAttendeeUpdate,
+    onAttendeeDelete: handleAttendeeDelete
+  });
+
+  // Update connection status
+  useEffect(() => {
+    setRealtimeConnected(isConnected);
+  }, [isConnected]);
 
   // Carga inicial de todos los participantes
   useEffect(() => {
@@ -111,13 +151,8 @@ export default function Page() {
   
     await printLabelHtml(printer, r.full_name, r.company || '', row.ticket_no);
   
-    // refrescamos UI local
-    const copy = allAttendees.map(x =>
-      x.id === r.id
-        ? { ...x, checked_in_at: row.checked_in_at, ticket_no: row.ticket_no, station }
-        : x
-    );
-    setAllAttendees(copy);
+    // No need to update local state - realtime will handle it
+    // The database update will trigger the realtime subscription
   };
 
   const reprint = async (r: Attendee) => {
@@ -157,15 +192,7 @@ export default function Page() {
       return;
     }
 
-    // Update local state
-    const updatedAttendees = allAttendees.map(attendee =>
-      attendee.id === r.id
-        ? { ...attendee, full_name: editName.trim(), company: editCompany.trim() || null }
-        : attendee
-    );
-    setAllAttendees(updatedAttendees);
-    
-    // Reset edit state
+    // Reset edit state - realtime will handle the data update
     setEditingId(null);
     setEditName('');
     setEditCompany('');
@@ -234,6 +261,25 @@ export default function Page() {
                 fontSize: '20px'
               }}>✓</span>
               Check-in Evento
+              {/* <span className="realtime-indicator" style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 8px',
+                borderRadius: '12px',
+                fontSize: '12px',
+                fontWeight: '500',
+                background: realtimeConnected ? '#10b981' : '#f59e0b',
+                color: 'white'
+              }}>
+                <span className={realtimeConnected ? 'realtime-pulse' : ''} style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'currentColor'
+                }}></span>
+                {realtimeConnected ? 'Tiempo Real Activo' : 'Conectando...'}
+              </span> */}
             </h1>
             <p style={{
               margin: '8px 0 0 0',
@@ -261,12 +307,16 @@ export default function Page() {
               }}>
                 🏢 Estación
               </label>
-              <input 
+              <select 
                 value={station} 
                 onChange={e=>setStation(e.target.value)} 
-                placeholder="N1 / N2 / N3"
                 style={{width: '100%'}}
-              />
+              >
+                <option value="N1">N1</option>
+                <option value="N2">N2</option>
+                <option value="N3">N3</option>
+                <option value="N4">N4</option>
+              </select>
             </div>
             <div>
               <label style={{
@@ -372,6 +422,28 @@ export default function Page() {
             >
               📊 Exportar Excel
             </button>
+            {/* <button 
+              onClick={refreshAllData}
+              style={{
+                padding: '10px 16px',
+                background: realtimeConnected ? '#6b7280' : '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+              title={realtimeConnected ? 'Refrescar datos manualmente' : 'Reconectar y refrescar'}
+            >
+              🔄 {realtimeConnected ? 'Refrescar' : 'Reconectar'}
+            </button> */}
           </div>
         </div>
 
@@ -648,8 +720,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     setShowModal(false);
     setFile(null);
     onImported();
-    // Recargar todos los participantes después de importar
-    window.location.reload();
+    // No need to reload - realtime will handle the updates automatically
   }
 
   return (

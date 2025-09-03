@@ -1605,6 +1605,7 @@ ${elementsHtml}
                             onClick={() => deleteConfigurationCloud(config.id)}
                             className="text-red-500 hover:text-red-700 text-xs ml-2"
                             title="Eliminar configuración"
+                            style={{background: '#dc2626'}}
                           >
                             🗑️
                           </button>

@@ -8,15 +8,15 @@ export async function exportAttendeesToExcel(attendees: Attendee[], filename: st
 
   // Define columns
   worksheet.columns = [
-    { header: 'ID', key: 'id', width: 15 },
+    { header: 'ID', key: 'id', width: 5},
     { header: 'Nombre Completo', key: 'full_name', width: 25 },
-    { header: 'Empresa', key: 'company', width: 20 },
-    { header: 'Email', key: 'email', width: 25 },
+    { header: 'Empresa', key: 'company', width: 25 },
+    { header: 'Email', key: 'email', width: 15 },
     { header: 'Teléfono', key: 'phone', width: 15 },
-    { header: 'Estado', key: 'status', width: 15 },
+    { header: 'Estado', key: 'status', width: 13 },
     { header: 'Fecha Check-in', key: 'checked_in_at', width: 20 },
-    { header: 'Número de Ticket', key: 'ticket_no', width: 15 },
-    { header: 'Estación', key: 'station', width: 12 }
+    { header: 'Número de Ticket', key: 'ticket_no', width: 17 },
+    { header: 'Estación', key: 'station', width: 10 }
   ];
 
   // Style the header row
@@ -54,7 +54,7 @@ export async function exportAttendeesToExcel(attendees: Attendee[], filename: st
       row.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: 'FFF8E1' } // Light yellow for pending
+        fgColor: { argb: 'FFFFFF' } // Light yellow for pending
       };
     }
   });
@@ -71,28 +71,127 @@ export async function exportAttendeesToExcel(attendees: Attendee[], filename: st
     });
   });
 
-  // Add summary at the bottom
-  const summaryStartRow = attendees.length + 3;
+  // Create statistics worksheet
+  const statsWorksheet = workbook.addWorksheet('Estadísticas');
+  
+  // Calculate statistics
   const totalAttendees = attendees.length;
   const checkedIn = attendees.filter(a => a.checked_in_at).length;
   const pending = totalAttendees - checkedIn;
+  const percentageCheckedIn = totalAttendees > 0 ? ((checkedIn / totalAttendees) * 100).toFixed(1) : '0';
+  
+  // Get statistics by station
+  const stationStats = attendees.reduce((acc, attendee) => {
+    const station = attendee.station || 'Sin estación';
+    if (!acc[station]) {
+      acc[station] = { total: 0, checkedIn: 0 };
+    }
+    acc[station].total++;
+    if (attendee.checked_in_at) {
+      acc[station].checkedIn++;
+    }
+    return acc;
+  }, {} as Record<string, { total: number; checkedIn: number }>);
 
-  worksheet.addRow([]);
-  worksheet.addRow(['RESUMEN:', '', '', '', '', '', '', '', '']);
-  worksheet.addRow(['Total de Participantes:', totalAttendees, '', '', '', '', '', '', '']);
-  worksheet.addRow(['Registrados:', checkedIn, '', '', '', '', '', '', '']);
-  worksheet.addRow(['Pendientes:', pending, '', '', '', '', '', '', '']);
+  // Set up statistics worksheet columns
+  statsWorksheet.columns = [
+    { header: 'Métrica', key: 'metric', width: 30 },
+    { header: 'Valor', key: 'value', width: 15 },
+    { header: 'Porcentaje', key: 'percentage', width: 15 }
+  ];
 
-  // Style summary section
-  const summaryRows = [summaryStartRow + 1, summaryStartRow + 2, summaryStartRow + 3, summaryStartRow + 4];
-  summaryRows.forEach(rowNum => {
-    const row = worksheet.getRow(rowNum);
-    row.font = { bold: true };
-    row.getCell(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'F0F0F0' }
-    };
+  // Style the header row
+  const statsHeaderRow = statsWorksheet.getRow(1);
+  statsHeaderRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+  statsHeaderRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: '366092' }
+  };
+  statsHeaderRow.alignment = { horizontal: 'center' };
+
+  // Add general statistics
+  statsWorksheet.addRow({
+    metric: 'Total de Participantes',
+    value: totalAttendees,
+    percentage: '100.0%'
+  });
+  
+  statsWorksheet.addRow({
+    metric: 'Participantes Registrados',
+    value: checkedIn,
+    percentage: `${percentageCheckedIn}%`
+  });
+  
+  statsWorksheet.addRow({
+    metric: 'Participantes Pendientes',
+    value: pending,
+    percentage: `${(100 - parseFloat(percentageCheckedIn)).toFixed(1)}%`
+  });
+
+  // Add empty row
+  statsWorksheet.addRow({});
+
+  // Add station statistics header
+  statsWorksheet.addRow({
+    metric: 'ESTADÍSTICAS POR ESTACIÓN',
+    value: '',
+    percentage: ''
+  });
+
+  // Style the section header
+  const sectionHeaderRow = statsWorksheet.getRow(6);
+  sectionHeaderRow.font = { bold: true };
+  sectionHeaderRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'E8F5E8' }
+  };
+
+  // Add station statistics
+  Object.entries(stationStats).forEach(([station, stats]) => {
+    const stationPercentage = stats.total > 0 ? ((stats.checkedIn / stats.total) * 100).toFixed(1) : '0';
+    statsWorksheet.addRow({
+      metric: `${station} - Total`,
+      value: stats.total,
+      percentage: ''
+    });
+    statsWorksheet.addRow({
+      metric: `${station} - Registrados`,
+      value: stats.checkedIn,
+      percentage: `${stationPercentage}%`
+    });
+  });
+
+  // Add borders to all cells in statistics worksheet
+  statsWorksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+  });
+
+  // Color code statistics rows
+  statsWorksheet.eachRow((row, rowNumber) => {
+    if (rowNumber > 1 && rowNumber <= 4) { // General statistics rows
+      if (rowNumber === 3) { // Checked in row
+        row.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'E8F5E8' } // Light green
+        };
+      } else if (rowNumber === 4) { // Pending row
+        row.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF2E8' } // Light orange
+        };
+      }
+    }
   });
 
   // Generate buffer and trigger download
