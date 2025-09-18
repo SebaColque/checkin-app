@@ -942,7 +942,7 @@ function ResetBlock({ onReset }: { onReset: () => void }) {
   const [loading, setLoading] = useState(false);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
-  const REQUIRED_CLICKS = 5;
+  const REQUIRED_CLICKS = 2;
   const TIMEOUT_DURATION = 3000; // 3 seconds
 
   const handleClick = () => {
