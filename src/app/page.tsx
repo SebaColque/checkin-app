@@ -262,6 +262,11 @@ export default function Page() {
         }}>
           <ImportBlock onImported={() => setQ(q)}/>
           <AddManual onAdded={(a) => setAllAttendees([a, ...allAttendees])} />
+          <BulkPrintBlock 
+            attendees={allAttendees} 
+            printer={printer}
+            onComplete={() => {}}
+          />
           <ResetBlock onReset={() => window.location.reload()} />
         </div>
 
@@ -732,23 +737,104 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     setPhoneCol(guess(['telefono', 'phone', 'celular', 'movil']) || '');
   }
 
+  // Función para crear un hash único basado en múltiples campos
+  const createAttendeeHash = (attendee: { full_name: string; email: string | null; company: string | null; phone: string | null }) => {
+    const normalize = (str: string | null | undefined) => {
+      if (!str) return '';
+      return str.toLowerCase().trim().replace(/\s+/g, ' ');
+    };
+    // Combinamos nombre + email + empresa + teléfono para detectar duplicados
+    // Solo consideramos duplicado si coincide en TODOS los campos presentes
+    const parts = [
+      normalize(attendee.full_name),
+      normalize(attendee.email),
+      normalize(attendee.company),
+      normalize(attendee.phone)
+    ].filter(Boolean); // Eliminamos campos vacíos
+    return parts.join('|');
+  };
+
   async function doImport() {
     if (!nameCol) return alert('Elegí la columna de NOMBRE');
 
-    const subset = rows.slice(0, 5000).map(r => ({
+    // 1. Obtener todos los participantes existentes de la base de datos
+    const { data: existingAttendees, error: fetchError } = await supabase
+      .from('attendees')
+      .select('full_name, email, company, phone');
+    
+    if (fetchError) {
+      alert('Error al consultar participantes existentes');
+      console.error(fetchError);
+      return;
+    }
+
+    // 2. Crear un Set con los hashes de los participantes existentes
+    const existingHashes = new Set(
+      (existingAttendees || []).map(a => createAttendeeHash(a))
+    );
+
+    // 3. Procesar las filas del archivo
+    const processedRows = rows.slice(0, 5000).map(r => ({
       full_name: String(r[nameCol] ?? '').trim(),
       company: companyCol ? String(r[companyCol] ?? '').trim() || null : null,
       email: emailCol ? String(r[emailCol] ?? '').trim() || null : null,
       phone: phoneCol ? String(r[phoneCol] ?? '').trim() || null : null
     })).filter(x => x.full_name);
 
-    if (!subset.length) return alert('No hay filas válidas');
+    if (!processedRows.length) return alert('No hay filas válidas');
 
-    const op = supabase.from('attendees').insert(subset);
+    // 4. Filtrar duplicados internos del archivo (misma fila repetida)
+    const seenInFile = new Set<string>();
+    const uniqueFromFile: typeof processedRows = [];
+    let duplicatesInFile = 0;
 
-    const { error } = await op;
-    if (error) { alert('Error al importar'); console.error(error); return; }
-    alert(`Importación OK (${subset.length} registros)`);
+    for (const row of processedRows) {
+      const hash = createAttendeeHash(row);
+      if (seenInFile.has(hash)) {
+        duplicatesInFile++;
+        continue;
+      }
+      seenInFile.add(hash);
+      uniqueFromFile.push(row);
+    }
+
+    // 5. Filtrar contra la base de datos
+    const toInsert: typeof processedRows = [];
+    let duplicatesInDB = 0;
+
+    for (const row of uniqueFromFile) {
+      const hash = createAttendeeHash(row);
+      if (existingHashes.has(hash)) {
+        duplicatesInDB++;
+        continue;
+      }
+      toInsert.push(row);
+    }
+
+    if (!toInsert.length) {
+      alert(`No se importó ningún participante.\n\n• ${duplicatesInFile} duplicados dentro del archivo\n• ${duplicatesInDB} ya existen en la base de datos`);
+      return;
+    }
+
+    // 6. Insertar los participantes únicos
+    const { error } = await supabase.from('attendees').insert(toInsert);
+    
+    if (error) { 
+      alert('Error al importar'); 
+      console.error(error); 
+      return; 
+    }
+
+    // 7. Mostrar resumen
+    const totalSkipped = duplicatesInFile + duplicatesInDB;
+    let message = `✅ Importación exitosa\n\n📥 Importados: ${toInsert.length} participantes`;
+    if (totalSkipped > 0) {
+      message += `\n\n⚠️ Ignorados: ${totalSkipped}`;
+      if (duplicatesInFile > 0) message += `\n   • ${duplicatesInFile} duplicados dentro del archivo`;
+      if (duplicatesInDB > 0) message += `\n   • ${duplicatesInDB} ya existen en la base de datos`;
+    }
+    
+    alert(message);
     setShowModal(false);
     setFile(null);
     onImported();
@@ -927,6 +1013,345 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
                   </button>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+/** ----- Componente: Impresión Masiva ----- */
+function BulkPrintBlock({ 
+  attendees, 
+  printer, 
+  onComplete 
+}: { 
+  attendees: Attendee[]; 
+  printer: string;
+  onComplete: () => void;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [printOption, setPrintOption] = useState<'all' | 'pending' | 'custom'>('all');
+  const [customCount, setCustomCount] = useState<string>('');
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, success: 0, error: 0 });
+
+  const getAttendeesToPrint = () => {
+    switch (printOption) {
+      case 'all':
+        return attendees;
+      case 'pending':
+        return attendees.filter(a => !a.checked_in_at);
+      case 'custom':
+        const count = parseInt(customCount) || 0;
+        return attendees.slice(0, count);
+      default:
+        return attendees;
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!printer) {
+      alert('Por favor, selecciona una impresora primero');
+      return;
+    }
+
+    const toPrint = getAttendeesToPrint();
+    if (toPrint.length === 0) {
+      alert('No hay participantes para imprimir');
+      return;
+    }
+
+    setIsPrinting(true);
+    setProgress({ current: 0, total: toPrint.length, success: 0, error: 0 });
+
+    for (let i = 0; i < toPrint.length; i++) {
+      const attendee = toPrint[i];
+      setProgress(prev => ({ ...prev, current: i + 1 }));
+
+      try {
+        let ticketNo = attendee.ticket_no;
+
+        // Si no tiene ticket, asignar uno
+        if (!ticketNo) {
+          const { data, error } = await supabase.rpc('check_in_attendee', {
+            p_id: attendee.id,
+            p_station: 'BULK_PRINT'
+          });
+
+          if (error) {
+            console.error('Error asignando ticket:', error);
+            setProgress(prev => ({ ...prev, error: prev.error + 1 }));
+            continue;
+          }
+
+          ticketNo = data && data[0] ? data[0].ticket_no : null;
+        }
+
+        if (ticketNo) {
+          await printLabelHtml(printer, attendee.full_name, attendee.company || '', ticketNo);
+          setProgress(prev => ({ ...prev, success: prev.success + 1 }));
+        } else {
+          setProgress(prev => ({ ...prev, error: prev.error + 1 }));
+        }
+
+        // Delay de 500ms entre impresiones
+        if (i < toPrint.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (error) {
+        console.error('Error imprimiendo:', error);
+        setProgress(prev => ({ ...prev, error: prev.error + 1 }));
+      }
+    }
+
+    setIsPrinting(false);
+    const totalPrinted = progress.success;
+    const totalErrors = progress.error;
+    
+    if (totalErrors === 0) {
+      alert(`✅ Impresión completada\n\n📄 ${totalPrinted} etiquetas impresas correctamente`);
+    } else {
+      alert(`⚠️ Impresión finalizada\n\n✅ ${totalPrinted} impresas correctamente\n❌ ${totalErrors} con errores`);
+    }
+    
+    setShowModal(false);
+    onComplete();
+  };
+
+  const selectedCount = getAttendeesToPrint().length;
+
+  return (
+    <>
+      <button 
+        onClick={() => setShowModal(true)}
+        style={{
+          padding: '12px 20px',
+          background: '#7c3aed',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          whiteSpace: 'nowrap',
+          marginTop: '100px'
+        }}
+      >
+        🖨️ Imprimir Todos
+      </button>
+
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="card" style={{
+            width: '90%',
+            maxWidth: '500px',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <div className="card-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                margin: '0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                🖨️ Impresión Masiva
+              </h3>
+              <button 
+                onClick={() => !isPrinting && setShowModal(false)}
+                disabled={isPrinting}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: isPrinting ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  opacity: isPrinting ? 0.5 : 1
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {!isPrinting ? (
+              <>
+                <div style={{marginBottom: '20px'}}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    marginBottom: '12px',
+                    color: 'var(--foreground)'
+                  }}>
+                    Seleccionar participantes a imprimir:
+                  </label>
+                  
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px',
+                      border: printOption === 'all' ? '2px solid #7c3aed' : '2px solid var(--border)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: printOption === 'all' ? 'rgb(124 58 237 / 0.1)' : 'var(--background)'
+                    }}>
+                      <input 
+                        type="radio" 
+                        name="printOption" 
+                        value="all"
+                        checked={printOption === 'all'}
+                        onChange={(e) => setPrintOption(e.target.value as any)}
+                      />
+                      <span>
+                        <strong>Todos los participantes</strong>
+                        <span style={{display: 'block', fontSize: '12px', color: 'var(--secondary)'}}>
+                          {attendees.length} participantes
+                        </span>
+                      </span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px',
+                      border: printOption === 'pending' ? '2px solid #7c3aed' : '2px solid var(--border)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: printOption === 'pending' ? 'rgb(124 58 237 / 0.1)' : 'var(--background)'
+                    }}>
+                      <input 
+                        type="radio" 
+                        name="printOption" 
+                        value="pending"
+                        checked={printOption === 'pending'}
+                        onChange={(e) => setPrintOption(e.target.value as any)}
+                      />
+                      <span>
+                        <strong>Solo pendientes (sin registrar)</strong>
+                        <span style={{display: 'block', fontSize: '12px', color: 'var(--secondary)'}}>
+                          {attendees.filter(a => !a.checked_in_at).length} participantes
+                        </span>
+                      </span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px',
+                      border: printOption === 'custom' ? '2px solid #7c3aed' : '2px solid var(--border)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: printOption === 'custom' ? 'rgb(124 58 237 / 0.1)' : 'var(--background)'
+                    }}>
+                      <input 
+                        type="radio" 
+                        name="printOption" 
+                        value="custom"
+                        checked={printOption === 'custom'}
+                        onChange={(e) => setPrintOption(e.target.value as any)}
+                      />
+                      <span>
+                        <strong>Cantidad personalizada</strong>
+                        {printOption === 'custom' && (
+                          <input
+                            type="number"
+                            min="1"
+                            max={attendees.length}
+                            value={customCount}
+                            onChange={(e) => setCustomCount(e.target.value)}
+                            placeholder={`Máx: ${attendees.length}`}
+                            style={{
+                              marginTop: '8px',
+                              width: '120px',
+                              padding: '6px 10px',
+                              fontSize: '14px'
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '12px',
+                  background: 'rgb(124 58 237 / 0.1)',
+                  borderRadius: '8px',
+                  marginBottom: '20px',
+                  fontSize: '14px'
+                }}>
+                  <strong>📄 Total a imprimir: {selectedCount} etiquetas</strong>
+                </div>
+                
+                <div style={{display: 'flex', gap: '12px'}}>
+                  <button 
+                    onClick={handlePrint} 
+                    style={{flex: 1}}
+                    disabled={selectedCount === 0}
+                  >
+                    🖨️ Iniciar Impresión
+                  </button>
+                  <button 
+                    onClick={() => setShowModal(false)} 
+                    className="secondary"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{textAlign: 'center', padding: '20px'}}>
+                <div style={{fontSize: '48px', marginBottom: '16px'}}>🖨️</div>
+                <h4 style={{margin: '0 0 16px 0', fontSize: '18px'}}>
+                  Imprimiendo... {progress.current} de {progress.total}
+                </h4>
+                <div style={{
+                  width: '100%',
+                  height: '8px',
+                  background: 'var(--border)',
+                  borderRadius: '4px',
+                  overflow: 'hidden',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{
+                    width: `${(progress.current / progress.total) * 100}%`,
+                    height: '100%',
+                    background: '#7c3aed',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                <div style={{fontSize: '14px', color: 'var(--secondary)'}}>
+                  ✅ {progress.success} completados • ⏳ {progress.total - progress.current} pendientes
+                  {progress.error > 0 && <span style={{color: '#ef4444'}}> • ❌ {progress.error} errores</span>}
+                </div>
+                <p style={{marginTop: '16px', fontSize: '13px', color: 'var(--secondary)'}}>
+                  Por favor, no cierres esta ventana hasta que termine la impresión.
+                </p>
+              </div>
             )}
           </div>
         </div>
