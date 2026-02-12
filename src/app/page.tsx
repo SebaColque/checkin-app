@@ -12,6 +12,7 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCompany, setEditCompany] = useState('');
+  const [editLocation, setEditLocation] = useState('');
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [checkingInIds, setCheckingInIds] = useState<Set<string>>(new Set());
 
@@ -54,7 +55,7 @@ export default function Page() {
 
   const testPrint = async () => {
     if (!printer) return alert('Elegí una impresora');
-    await printLabelHtml(printer, 'PRUEBA', 'EMPRESA TEST', 123);  // crea un PDF si usás “Print to PDF”
+    await printLabelHtml(printer, 'PRUEBA', 'EMPRESA TEST', 'UBICACIÓN TEST', 123);  // crea un PDF si usás "Print to PDF"
   };
 
   // Realtime handlers
@@ -102,7 +103,7 @@ export default function Page() {
       setLoading(true);
       const { data, error } = await supabase
         .from('attendees')
-        .select('id, full_name, company, email, phone, checked_in_at, ticket_no, station')
+        .select('id, full_name, company, email, phone, location, checked_in_at, ticket_no, station')
         .order('full_name');
 
       if (!abort) {
@@ -156,7 +157,7 @@ export default function Page() {
         return;
       }
     
-      await printLabelHtml(printer, r.full_name, r.company || '', row.ticket_no);
+      await printLabelHtml(printer, r.full_name, r.company || '', r.location || '', row.ticket_no);
     
       // Optimistic update: immediately update local state
       // Realtime will eventually sync, but this ensures immediate UI feedback
@@ -184,19 +185,21 @@ export default function Page() {
 
   const reprint = async (r: Attendee) => {
     if (!r.ticket_no) return;
-    await printLabelHtml(printer, r.full_name, r.company || '', r.ticket_no);
+    await printLabelHtml(printer, r.full_name, r.company || '', r.location || '', r.ticket_no);
   };
 
   const startEdit = (r: Attendee) => {
     setEditingId(r.id);
     setEditName(r.full_name);
     setEditCompany(r.company || '');
+    setEditLocation(r.location || '');
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditName('');
     setEditCompany('');
+    setEditLocation('');
   };
 
   const saveEdit = async (r: Attendee) => {
@@ -209,7 +212,8 @@ export default function Page() {
       .from('attendees')
       .update({
         full_name: editName.trim(),
-        company: editCompany.trim() || null
+        company: editCompany.trim() || null,
+        location: editLocation.trim() || null
       })
       .eq('id', r.id);
 
@@ -223,6 +227,7 @@ export default function Page() {
     setEditingId(null);
     setEditName('');
     setEditCompany('');
+    setEditLocation('');
   };
 
   const handleExportExcel = async () => {
@@ -585,6 +590,20 @@ export default function Page() {
                             background: 'var(--background)'
                           }}
                         />
+                        <input
+                          value={editLocation}
+                          onChange={(e) => setEditLocation(e.target.value)}
+                          placeholder="Ubicación"
+                          style={{
+                            flex: '1',
+                            minWidth: '120px',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            background: 'var(--background)'
+                          }}
+                        />
                       </div>
                     ) : (
                       <div style={{
@@ -718,6 +737,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
   const [companyCol, setCompanyCol] = useState('');
   const [emailCol, setEmailCol] = useState('');
   const [phoneCol, setPhoneCol] = useState('');
+  const [locationCol, setLocationCol] = useState('');
   const [skipDupById, setSkipDupById] = useState(true);
 
   async function handleFile(f: File) {
@@ -735,21 +755,23 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     setCompanyCol(guess(['empresa', 'company', 'compañia', 'organizacion']) || '');
     setEmailCol(guess(['email', 'correo', 'mail']) || '');
     setPhoneCol(guess(['telefono', 'phone', 'celular', 'movil']) || '');
+    setLocationCol(guess(['ubicacion', 'location', 'lugar', 'sede', 'sala', 'mesa']) || '');
   }
 
   // Función para crear un hash único basado en múltiples campos
-  const createAttendeeHash = (attendee: { full_name: string; email: string | null; company: string | null; phone: string | null }) => {
+  const createAttendeeHash = (attendee: { full_name: string; email: string | null; company: string | null; phone: string | null; location?: string | null }) => {
     const normalize = (str: string | null | undefined) => {
       if (!str) return '';
       return str.toLowerCase().trim().replace(/\s+/g, ' ');
     };
-    // Combinamos nombre + email + empresa + teléfono para detectar duplicados
+    // Combinamos nombre + email + empresa + teléfono + ubicación para detectar duplicados
     // Solo consideramos duplicado si coincide en TODOS los campos presentes
     const parts = [
       normalize(attendee.full_name),
       normalize(attendee.email),
       normalize(attendee.company),
-      normalize(attendee.phone)
+      normalize(attendee.phone),
+      normalize(attendee.location)
     ].filter(Boolean); // Eliminamos campos vacíos
     return parts.join('|');
   };
@@ -760,7 +782,7 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
     // 1. Obtener todos los participantes existentes de la base de datos
     const { data: existingAttendees, error: fetchError } = await supabase
       .from('attendees')
-      .select('full_name, email, company, phone');
+      .select('full_name, email, company, phone, location');
     
     if (fetchError) {
       alert('Error al consultar participantes existentes');
@@ -778,7 +800,8 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
       full_name: String(r[nameCol] ?? '').trim(),
       company: companyCol ? String(r[companyCol] ?? '').trim() || null : null,
       email: emailCol ? String(r[emailCol] ?? '').trim() || null : null,
-      phone: phoneCol ? String(r[phoneCol] ?? '').trim() || null : null
+      phone: phoneCol ? String(r[phoneCol] ?? '').trim() || null : null,
+      location: locationCol ? String(r[locationCol] ?? '').trim() || null : null
     })).filter(x => x.full_name);
 
     if (!processedRows.length) return alert('No hay filas válidas');
@@ -1001,9 +1024,24 @@ function ImportBlock({ onImported }: { onImported: () => void }) {
                       {columns.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      color: 'var(--foreground)'
+                    }}>
+                      Columna UBICACIÓN
+                    </label>
+                    <select value={locationCol} onChange={e=>setLocationCol(e.target.value)} style={{width: '100%', fontSize: '13px'}}>
+                      <option value="">— Opcional —</option>
+                      {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                 </div>
-                
-                
+
+
                 <div style={{display: 'flex', gap: '12px'}}>
                   <button onClick={doImport} style={{flex: 1}}>
                     📤 Importar Datos
@@ -1091,7 +1129,7 @@ function BulkPrintBlock({
         }
 
         if (ticketNo) {
-          await printLabelHtml(printer, attendee.full_name, attendee.company || '', ticketNo);
+          await printLabelHtml(printer, attendee.full_name, attendee.company || '', attendee.location || '', ticketNo);
           setProgress(prev => ({ ...prev, success: prev.success + 1 }));
         } else {
           setProgress(prev => ({ ...prev, error: prev.error + 1 }));
@@ -1524,20 +1562,22 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
 
   const add = async () => {
     const payload = { 
       full_name: name.trim(), 
       company: company.trim() || null,
       email: email.trim() || null,
-      phone: phone.trim() || null
+      phone: phone.trim() || null,
+      location: location.trim() || null
     };
     if (!payload.full_name) { alert('Nombre requerido'); return; }
     const { data, error } = await supabase.from('attendees')
       .insert(payload).select().single();
     if (error) { alert('Error al agregar'); console.error(error); return; }
     onAdded(data as any);
-    setName(''); setCompany(''); setEmail(''); setPhone('');
+    setName(''); setCompany(''); setEmail(''); setPhone(''); setLocation('');
   };
 
   return (
@@ -1628,6 +1668,23 @@ function AddManual({ onAdded }: { onAdded: (a: Attendee)=>void }) {
             placeholder="Número de teléfono" 
             value={phone} 
             onChange={e=>setPhone(e.target.value)}
+            style={{width: '100%', fontSize: '14px'}}
+          />
+        </div>
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '13px',
+            fontWeight: '500',
+            marginBottom: '4px',
+            color: 'var(--foreground)'
+          }}>
+            Ubicación
+          </label>
+          <input 
+            placeholder="Ubicación" 
+            value={location} 
+            onChange={e=>setLocation(e.target.value)}
             style={{width: '100%', fontSize: '14px'}}
           />
         </div>

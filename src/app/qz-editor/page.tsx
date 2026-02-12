@@ -19,7 +19,7 @@ import {
 
 interface CanvasElement {
   id: string;
-  type: 'name' | 'company' | 'ticket' | 'logo';
+  type: 'name' | 'company' | 'location' | 'ticket' | 'logo';
   x: number;
   y: number;
   width: number;
@@ -55,7 +55,13 @@ interface PrintStyles {
   companyColor: string;
   companyFontWeight: number;
   companyTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
-  
+
+  // Location styles
+  locationFontSize: number;
+  locationColor: string;
+  locationFontWeight: number;
+  locationTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
   // Ticket styles
   ticketFontSize: number;
   ticketFontWeight: number;
@@ -72,34 +78,8 @@ interface PrintStyles {
   // Text alignment options
   nameTextAlign: 'left' | 'center';
   companyTextAlign: 'left' | 'center';
+  locationTextAlign: 'left' | 'center';
   ticketTextAlign: 'left' | 'center';
-}
-
-const defaultStyles: PrintStyles = {
-  pageWidth: 55,
-  pageHeight: 44,
-  pageMargin: 0,
-  pagePadding: 0,
-  containerPadding: 2,
-  nameFontSize: 14,
-  nameFontWeight: 600,
-  nameColor: '#000000',
-  nameMarginBottom: 1,
-  nameTextCase: 'none',
-  companyFontSize: 12,
-  companyColor: '#666666',
-  companyFontWeight: 400,
-  companyTextCase: 'none',
-  ticketFontSize: 18,
-  ticketFontWeight: 700,
-  ticketColor: '#000000',
-  logoSize: 8,
-  logoPosition: 'top-left',
-  logoMargin: 2,
-  fontFamily: 'Arial',
-  nameTextAlign: 'left',
-  companyTextAlign: 'left',
-  ticketTextAlign: 'center'
 };
 
 // Utility function to apply text case transformations
@@ -119,12 +99,45 @@ const applyTextCase = (text: string, textCase: 'none' | 'uppercase' | 'lowercase
   }
 };
 
+const defaultStyles: PrintStyles = {
+  pageWidth: 55,
+  pageHeight: 44,
+  pageMargin: 0,
+  pagePadding: 0,
+  containerPadding: 2,
+  nameFontSize: 14,
+  nameFontWeight: 600,
+  nameColor: '#000000',
+  nameMarginBottom: 1,
+  nameTextCase: 'none',
+  companyFontSize: 12,
+  companyColor: '#666666',
+  companyFontWeight: 400,
+  companyTextCase: 'none',
+  locationFontSize: 10,
+  locationColor: '#888888',
+  locationFontWeight: 400,
+  locationTextCase: 'none',
+  ticketFontSize: 18,
+  ticketFontWeight: 700,
+  ticketColor: '#000000',
+  logoSize: 8,
+  logoPosition: 'top-left',
+  logoMargin: 2,
+  fontFamily: 'Arial',
+  nameTextAlign: 'left',
+  companyTextAlign: 'left',
+  locationTextAlign: 'left',
+  ticketTextAlign: 'center'
+};
+
 export default function QZEditor() {
   const [styles, setStyles] = useState<PrintStyles>(defaultStyles);
   const [printers, setPrinters] = useState<string[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>('');
   const [testName, setTestName] = useState('Juan Pérez');
   const [testCompany, setTestCompany] = useState('Empresa ABC');
+  const [testLocation, setTestLocation] = useState('Sala A');
   const [testTicket, setTestTicket] = useState(123);
   const [isPrinting, setIsPrinting] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -155,10 +168,11 @@ export default function QZEditor() {
     setElements(prev => prev.map(el => {
       if (el.type === 'name') return { ...el, content: applyTextCase(testName, styles.nameTextCase) };
       if (el.type === 'company') return { ...el, content: applyTextCase(testCompany, styles.companyTextCase) };
+      if (el.type === 'location') return { ...el, content: applyTextCase(testLocation, styles.locationTextCase) };
       if (el.type === 'ticket') return { ...el, content: testTicket.toString() };
       return el;
     }));
-  }, [testName, testCompany, testTicket, styles.nameTextCase, styles.companyTextCase]);
+  }, [testName, testCompany, testLocation, testTicket, styles.nameTextCase, styles.companyTextCase, styles.locationTextCase]);
 
   // Update element styles when styles change
   useEffect(() => {
@@ -177,14 +191,27 @@ export default function QZEditor() {
         };
       }
       if (el.type === 'company') {
-        return { 
-          ...el, 
+        return {
+          ...el,
           fontSize: styles.companyFontSize,
           fontWeight: styles.companyFontWeight,
           color: styles.companyColor,
           textAlign: styles.companyTextAlign,
           ...(() => {
             const dims = calculateTextDimensions(el.content, styles.companyFontSize, styles.companyTextAlign, 180);
+            return { width: dims.width, height: dims.height };
+          })()
+        };
+      }
+      if (el.type === 'location') {
+        return {
+          ...el,
+          fontSize: styles.locationFontSize,
+          fontWeight: styles.locationFontWeight,
+          color: styles.locationColor,
+          textAlign: styles.locationTextAlign,
+          ...(() => {
+            const dims = calculateTextDimensions(el.content, styles.locationFontSize, styles.locationTextAlign, 180);
             return { width: dims.width, height: dims.height };
           })()
         };
@@ -213,6 +240,7 @@ export default function QZEditor() {
     }));
   }, [styles.nameFontSize, styles.nameFontWeight, styles.nameColor, styles.nameTextAlign,
       styles.companyFontSize, styles.companyFontWeight, styles.companyColor, styles.companyTextAlign,
+      styles.locationFontSize, styles.locationFontWeight, styles.locationColor, styles.locationTextAlign,
       styles.ticketFontSize, styles.ticketFontWeight, styles.ticketColor, styles.ticketTextAlign,
       styles.logoSize]);
 
@@ -276,6 +304,23 @@ export default function QZEditor() {
         fontWeight: styles.companyFontWeight,
         color: styles.companyColor,
         textAlign: styles.companyTextAlign,
+        zIndex: 1,
+        selected: false
+      },
+      {
+        id: 'location',
+        type: 'location',
+        x: 10,
+        y: 55,
+        ...(() => {
+          const dims = calculateTextDimensions(testLocation, styles.locationFontSize, styles.locationTextAlign, 180);
+          return { width: dims.width, height: dims.height };
+        })(),
+        content: applyTextCase(testLocation, styles.locationTextCase),
+        fontSize: styles.locationFontSize,
+        fontWeight: styles.locationFontWeight,
+        color: styles.locationColor,
+        textAlign: styles.locationTextAlign,
         zIndex: 1,
         selected: false
       },
@@ -535,8 +580,44 @@ export default function QZEditor() {
 
   // Apply configuration to current state
   const applyConfiguration = (config: QZConfiguration) => {
-    setStyles(config.styles);
-    setElements(config.elements.map((el: any) => ({ ...el, selected: false })));
+    // Asegurar valores por defecto para location si no existen
+    const mergedStyles = {
+      ...config.styles,
+      locationFontSize: config.styles.locationFontSize ?? 10,
+      locationFontWeight: config.styles.locationFontWeight ?? 400,
+      locationColor: config.styles.locationColor ?? '#888888',
+      locationTextCase: config.styles.locationTextCase ?? 'none',
+      locationTextAlign: config.styles.locationTextAlign ?? 'left'
+    };
+    setStyles(mergedStyles);
+
+    // Asegurar que siempre haya un elemento location
+    const existingElements = config.elements.map((el: any) => ({ ...el, selected: false }));
+    const hasLocation = existingElements.some((el: any) => el.type === 'location');
+
+    let finalElements = existingElements;
+    if (!hasLocation) {
+      const locationEl: CanvasElement = {
+        id: 'location',
+        type: 'location',
+        x: 10,
+        y: 55,
+        ...(() => {
+          const dims = calculateTextDimensions(testLocation, mergedStyles.locationFontSize, mergedStyles.locationTextAlign, 180);
+          return { width: dims.width, height: dims.height };
+        })(),
+        content: applyTextCase(testLocation, mergedStyles.locationTextCase),
+        fontSize: mergedStyles.locationFontSize,
+        fontWeight: mergedStyles.locationFontWeight,
+        color: mergedStyles.locationColor,
+        textAlign: mergedStyles.locationTextAlign,
+        zIndex: 1,
+        selected: false
+      };
+      finalElements = [...existingElements, locationEl];
+    }
+
+    setElements(finalElements);
     if (config.logoDataUrl) {
       setLogoDataUrl(config.logoDataUrl);
     }
@@ -1074,6 +1155,60 @@ ${elementsHtml}
                       type="checkbox"
                       checked={styles.companyTextAlign === 'center'}
                       onChange={(e) => updateStyle('companyTextAlign', e.target.checked ? 'center' : 'left')}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Centrar texto</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Location Styles */}
+            <div className="mb-6">
+              <h3 className="font-medium mb-3 text-gray-900">Estilo de la Ubicación</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Tamaño Fuente (pt)</label>
+                  <input
+                    type="number"
+                    value={styles.locationFontSize}
+                    onChange={(e) => updateStyle('locationFontSize', parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Peso Fuente</label>
+                  <select
+                    value={styles.locationFontWeight}
+                    onChange={(e) => updateStyle('locationFontWeight', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={400}>Normal</option>
+                    <option value={500}>Medium</option>
+                    <option value={600}>Semi Bold</option>
+                    <option value={700}>Bold</option>
+                    <option value={800}>Extra Bold</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Formato de Texto</label>
+                  <select
+                    value={styles.locationTextCase}
+                    onChange={(e) => updateStyle('locationTextCase', e.target.value as 'none' | 'uppercase' | 'lowercase' | 'capitalize')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Sin cambios</option>
+                    <option value="uppercase">MAYÚSCULAS</option>
+                    <option value="lowercase">minúsculas</option>
+                    <option value="capitalize">Tipo Oración</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={styles.locationTextAlign === 'center'}
+                      onChange={(e) => updateStyle('locationTextAlign', e.target.checked ? 'center' : 'left')}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm font-medium text-gray-700">Centrar texto</span>

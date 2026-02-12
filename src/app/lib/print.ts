@@ -22,7 +22,41 @@ function loadSavedConfig() {
   
   try {
     const saved = localStorage.getItem('qz-editor-config');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    
+    const config = JSON.parse(saved);
+    
+    // Asegurar que siempre exista un elemento location
+    if (config && config.elements) {
+      const hasLocation = config.elements.some((e: any) => e.type === 'location');
+      if (!hasLocation) {
+        // Agregar elemento location por defecto
+        config.elements.push({
+          id: 'location',
+          type: 'location',
+          x: 10,
+          y: 55,
+          width: 160,
+          height: 20,
+          content: '',
+          fontSize: config.styles?.locationFontSize || 10,
+          fontWeight: config.styles?.locationFontWeight || 400,
+          color: config.styles?.locationColor || '#888',
+          textAlign: config.styles?.locationTextAlign || 'center',
+          zIndex: 1,
+          selected: false
+        });
+      }
+      // Asegurar estilos por defecto para location
+      if (!config.styles) config.styles = {};
+      config.styles.locationFontSize = config.styles.locationFontSize ?? 10;
+      config.styles.locationFontWeight = config.styles.locationFontWeight ?? 400;
+      config.styles.locationColor = config.styles.locationColor ?? '#888888';
+      config.styles.locationTextCase = config.styles.locationTextCase ?? 'none';
+      config.styles.locationTextAlign = config.styles.locationTextAlign ?? 'center';
+    }
+    
+    return config;
   } catch (error) {
     console.error('Error loading saved config:', error);
     return null;
@@ -191,7 +225,7 @@ function loadSavedConfig() {
 
 //   await window.qz.print(cfg, payload);
 // }
-export async function printLabelHtml(printerName: string, name: string, company: string, ticket: number) {
+export async function printLabelHtml(printerName: string, name: string, company: string, location: string, ticket: number) {
   await ensureQZ();
 
   const savedConfig = loadSavedConfig();
@@ -208,6 +242,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
     const logoEl    = elements.find((e: any) => e.type === 'logo');
     const nameEl    = elements.find((e: any) => e.type === 'name');
     const companyEl = elements.find((e: any) => e.type === 'company');
+    const locationEl = elements.find((e: any) => e.type === 'location');
     const ticketEl  = elements.find((e: any) => e.type === 'ticket');
 
     // Logo (usa mm del editor si existen; sino, fallback centrado arriba)
@@ -244,6 +279,12 @@ export async function printLabelHtml(printerName: string, name: string, company:
     const compColor  = companyEl?.color ?? '#666';
     const compAlign  = (companyEl?.textAlign ?? 'center') as 'left'|'center'|'right';
     const companyTextCase = styles.companyTextCase ?? 'none';
+
+    const locSize   = locationEl?.fontSize ?? 10;
+    const locWeight = locationEl?.fontWeight ?? 400;
+    const locColor  = locationEl?.color ?? '#888';
+    const locAlign  = (locationEl?.textAlign ?? 'center') as 'left'|'center'|'right';
+    const locationTextCase = styles.locationTextCase ?? 'none';
 
     // Ticket: si el editor tiene posición, la usamos; sino abajo-derecha
     let ticketHtml = '';
@@ -290,6 +331,10 @@ export async function printLabelHtml(printerName: string, name: string, company:
       font-size:${compSize}pt; font-weight:${compWeight}; color:${compColor}; margin-top:1mm;padding-left:3mm;padding-right:3mm;
       text-align:${compAlign}; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; line-height:1.2;
     }
+    .location {
+      font-size:${locSize}pt; font-weight:${locWeight}; color:${locColor}; margin-top:0.5mm;
+      text-align:${locAlign}; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; line-height:1.2;
+    }
     .ticket { position:absolute; bottom:2mm; right:2mm; font-size:18pt; font-weight:700; }
   </style>
 </head>
@@ -299,6 +344,7 @@ export async function printLabelHtml(printerName: string, name: string, company:
     <div class="block">
       <div class="name">${esc(applyTextCase(name, nameTextCase))}</div>
       <div class="company">${esc(applyTextCase(company, companyTextCase))}</div>
+      ${location ? `<div class="location">${esc(applyTextCase(location, locationTextCase))}</div>` : ''}
     </div>
     ${ticketHtml}
   </div>
@@ -315,12 +361,14 @@ export async function printLabelHtml(printerName: string, name: string, company:
   .block { position:absolute; left:0; top:12mm; width:100%; display:flex; flex-direction:column; align-items:center; text-align:center; }
   .name { font-size:14pt; font-weight:600; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
   .company { font-size:12pt; color:#666; margin-top:1mm; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
+  .location { font-size:10pt; color:#888; margin-top:0.5mm; line-height:1.2; white-space:normal; word-wrap:break-word; overflow-wrap:break-word; }
   .ticket { position:absolute; bottom:2mm; right:2mm; font-size:18pt; font-weight:700; }
 </style></head>
 <body>
   <div class="block">
     <div class="name">${esc(name)}</div>
     <div class="company">${esc(company)}</div>
+    ${location ? `<div class="location">${esc(location)}</div>` : ''}
   </div>
   <div class="ticket">${ticket}</div>
 </body></html>`;
