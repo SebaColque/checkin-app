@@ -28,6 +28,9 @@ interface CanvasElement {
   fontSize?: number;
   fontWeight?: number;
   color?: string;
+  fontFamily?: string;
+  fontStyle?: 'normal' | 'italic';
+  textDecoration?: 'none' | 'underline' | 'line-through';
   zIndex: number;
   selected: boolean;
   textAlign?: 'left' | 'center';
@@ -49,23 +52,35 @@ interface PrintStyles {
   nameColor: string;
   nameMarginBottom: number;
   nameTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  nameFontFamily: string;
+  nameFontStyle: 'normal' | 'italic';
+  nameTextDecoration: 'none' | 'underline' | 'line-through';
   
   // Company styles
   companyFontSize: number;
   companyColor: string;
   companyFontWeight: number;
   companyTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  companyFontFamily: string;
+  companyFontStyle: 'normal' | 'italic';
+  companyTextDecoration: 'none' | 'underline' | 'line-through';
 
   // Location styles
   locationFontSize: number;
   locationColor: string;
   locationFontWeight: number;
   locationTextCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  locationFontFamily: string;
+  locationFontStyle: 'normal' | 'italic';
+  locationTextDecoration: 'none' | 'underline' | 'line-through';
 
   // Ticket styles
   ticketFontSize: number;
   ticketFontWeight: number;
   ticketColor: string;
+  ticketFontFamily: string;
+  ticketFontStyle: 'normal' | 'italic';
+  ticketTextDecoration: 'none' | 'underline' | 'line-through';
   
   // Logo styles
   logoSize: number;
@@ -110,17 +125,29 @@ const defaultStyles: PrintStyles = {
   nameColor: '#000000',
   nameMarginBottom: 1,
   nameTextCase: 'none',
+  nameFontFamily: 'Arial',
+  nameFontStyle: 'normal',
+  nameTextDecoration: 'none',
   companyFontSize: 12,
   companyColor: '#666666',
   companyFontWeight: 400,
   companyTextCase: 'none',
+  companyFontFamily: 'Arial',
+  companyFontStyle: 'normal',
+  companyTextDecoration: 'none',
   locationFontSize: 10,
   locationColor: '#888888',
   locationFontWeight: 400,
   locationTextCase: 'none',
+  locationFontFamily: 'Arial',
+  locationFontStyle: 'normal',
+  locationTextDecoration: 'none',
   ticketFontSize: 18,
   ticketFontWeight: 700,
   ticketColor: '#000000',
+  ticketFontFamily: 'Arial',
+  ticketFontStyle: 'normal',
+  ticketTextDecoration: 'none',
   logoSize: 8,
   logoPosition: 'top-left',
   logoMargin: 2,
@@ -184,6 +211,9 @@ export default function QZEditor() {
           fontWeight: styles.nameFontWeight,
           color: styles.nameColor,
           textAlign: styles.nameTextAlign,
+          fontFamily: styles.nameFontFamily,
+          fontStyle: styles.nameFontStyle,
+          textDecoration: styles.nameTextDecoration,
           ...(() => {
             const dims = calculateTextDimensions(el.content, styles.nameFontSize, styles.nameTextAlign, 180);
             return { width: dims.width, height: dims.height };
@@ -197,6 +227,9 @@ export default function QZEditor() {
           fontWeight: styles.companyFontWeight,
           color: styles.companyColor,
           textAlign: styles.companyTextAlign,
+          fontFamily: styles.companyFontFamily,
+          fontStyle: styles.companyFontStyle,
+          textDecoration: styles.companyTextDecoration,
           ...(() => {
             const dims = calculateTextDimensions(el.content, styles.companyFontSize, styles.companyTextAlign, 180);
             return { width: dims.width, height: dims.height };
@@ -210,6 +243,9 @@ export default function QZEditor() {
           fontWeight: styles.locationFontWeight,
           color: styles.locationColor,
           textAlign: styles.locationTextAlign,
+          fontFamily: styles.locationFontFamily,
+          fontStyle: styles.locationFontStyle,
+          textDecoration: styles.locationTextDecoration,
           ...(() => {
             const dims = calculateTextDimensions(el.content, styles.locationFontSize, styles.locationTextAlign, 180);
             return { width: dims.width, height: dims.height };
@@ -223,6 +259,9 @@ export default function QZEditor() {
           fontWeight: styles.ticketFontWeight,
           color: styles.ticketColor,
           textAlign: styles.ticketTextAlign,
+          fontFamily: styles.ticketFontFamily,
+          fontStyle: styles.ticketFontStyle,
+          textDecoration: styles.ticketTextDecoration,
           ...(() => {
             const dims = calculateTextDimensions(el.content, styles.ticketFontSize, styles.ticketTextAlign, 120);
             return { width: dims.width, height: dims.height };
@@ -238,10 +277,10 @@ export default function QZEditor() {
       }
       return el;
     }));
-  }, [styles.nameFontSize, styles.nameFontWeight, styles.nameColor, styles.nameTextAlign,
-      styles.companyFontSize, styles.companyFontWeight, styles.companyColor, styles.companyTextAlign,
-      styles.locationFontSize, styles.locationFontWeight, styles.locationColor, styles.locationTextAlign,
-      styles.ticketFontSize, styles.ticketFontWeight, styles.ticketColor, styles.ticketTextAlign,
+  }, [styles.nameFontSize, styles.nameFontWeight, styles.nameColor, styles.nameTextAlign, styles.nameFontFamily, styles.nameFontStyle, styles.nameTextDecoration,
+      styles.companyFontSize, styles.companyFontWeight, styles.companyColor, styles.companyTextAlign, styles.companyFontFamily, styles.companyFontStyle, styles.companyTextDecoration,
+      styles.locationFontSize, styles.locationFontWeight, styles.locationColor, styles.locationTextAlign, styles.locationFontFamily, styles.locationFontStyle, styles.locationTextDecoration,
+      styles.ticketFontSize, styles.ticketFontWeight, styles.ticketColor, styles.ticketTextAlign, styles.ticketFontFamily, styles.ticketFontStyle, styles.ticketTextDecoration,
       styles.logoSize]);
 
   // Function to calculate text width and height based on content and font size
@@ -287,6 +326,9 @@ export default function QZEditor() {
         fontWeight: styles.nameFontWeight,
         color: styles.nameColor,
         textAlign: styles.nameTextAlign,
+        fontFamily: styles.nameFontFamily,
+        fontStyle: styles.nameFontStyle,
+        textDecoration: styles.nameTextDecoration,
         zIndex: 1,
         selected: false
       },
@@ -304,6 +346,9 @@ export default function QZEditor() {
         fontWeight: styles.companyFontWeight,
         color: styles.companyColor,
         textAlign: styles.companyTextAlign,
+        fontFamily: styles.companyFontFamily,
+        fontStyle: styles.companyFontStyle,
+        textDecoration: styles.companyTextDecoration,
         zIndex: 1,
         selected: false
       },
@@ -321,6 +366,9 @@ export default function QZEditor() {
         fontWeight: styles.locationFontWeight,
         color: styles.locationColor,
         textAlign: styles.locationTextAlign,
+        fontFamily: styles.locationFontFamily,
+        fontStyle: styles.locationFontStyle,
+        textDecoration: styles.locationTextDecoration,
         zIndex: 1,
         selected: false
       },
@@ -338,6 +386,9 @@ export default function QZEditor() {
         fontWeight: styles.ticketFontWeight,
         color: styles.ticketColor,
         textAlign: styles.ticketTextAlign,
+        fontFamily: styles.ticketFontFamily,
+        fontStyle: styles.ticketFontStyle,
+        textDecoration: styles.ticketTextDecoration,
         zIndex: 1,
         selected: false
       }
@@ -580,14 +631,30 @@ export default function QZEditor() {
 
   // Apply configuration to current state
   const applyConfiguration = (config: QZConfiguration) => {
-    // Asegurar valores por defecto para location si no existen
+    // Asegurar valores por defecto para propiedades que pueden no existir en configuraciones antiguas
     const mergedStyles = {
       ...config.styles,
+      // Location defaults
       locationFontSize: config.styles.locationFontSize ?? 10,
       locationFontWeight: config.styles.locationFontWeight ?? 400,
       locationColor: config.styles.locationColor ?? '#888888',
       locationTextCase: config.styles.locationTextCase ?? 'none',
-      locationTextAlign: config.styles.locationTextAlign ?? 'left'
+      locationTextAlign: config.styles.locationTextAlign ?? 'left',
+      locationFontFamily: config.styles.locationFontFamily ?? 'Arial',
+      locationFontStyle: config.styles.locationFontStyle ?? 'normal',
+      locationTextDecoration: config.styles.locationTextDecoration ?? 'none',
+      // Name defaults
+      nameFontFamily: config.styles.nameFontFamily ?? 'Arial',
+      nameFontStyle: config.styles.nameFontStyle ?? 'normal',
+      nameTextDecoration: config.styles.nameTextDecoration ?? 'none',
+      // Company defaults
+      companyFontFamily: config.styles.companyFontFamily ?? 'Arial',
+      companyFontStyle: config.styles.companyFontStyle ?? 'normal',
+      companyTextDecoration: config.styles.companyTextDecoration ?? 'none',
+      // Ticket defaults
+      ticketFontFamily: config.styles.ticketFontFamily ?? 'Arial',
+      ticketFontStyle: config.styles.ticketFontStyle ?? 'normal',
+      ticketTextDecoration: config.styles.ticketTextDecoration ?? 'none'
     };
     setStyles(mergedStyles);
 
@@ -611,6 +678,9 @@ export default function QZEditor() {
         fontWeight: mergedStyles.locationFontWeight,
         color: mergedStyles.locationColor,
         textAlign: mergedStyles.locationTextAlign,
+        fontFamily: mergedStyles.locationFontFamily,
+        fontStyle: mergedStyles.locationFontStyle,
+        textDecoration: mergedStyles.locationTextDecoration,
         zIndex: 1,
         selected: false
       };
@@ -640,6 +710,9 @@ export default function QZEditor() {
         fontWeight: el.fontWeight,
         color: el.color,
         textAlign: el.textAlign,
+        fontFamily: el.fontFamily,
+        fontStyle: el.fontStyle,
+        textDecoration: el.textDecoration,
         zIndex: el.zIndex
       })),
       logoDataUrl,
@@ -686,6 +759,9 @@ export default function QZEditor() {
           fontWeight: el.fontWeight,
           color: el.color,
           textAlign: el.textAlign,
+          fontFamily: el.fontFamily,
+          fontStyle: el.fontStyle,
+          textDecoration: el.textDecoration,
           zIndex: el.zIndex
         })),
         logoDataUrl,
@@ -763,6 +839,9 @@ export default function QZEditor() {
         fontWeight: el.fontWeight,
         color: el.color,
         textAlign: el.textAlign,
+        fontFamily: el.fontFamily,
+        fontStyle: el.fontStyle,
+        textDecoration: el.textDecoration,
         zIndex: el.zIndex
       })),
       logoDataUrl,
@@ -839,8 +918,11 @@ export default function QZEditor() {
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
+        const fontFamily = element.fontFamily || styles.fontFamily;
+        const fontStyle = element.fontStyle || 'normal';
+        const textDecoration = element.textDecoration || 'none';
         
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:flex-start;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};word-wrap:break-word;overflow-wrap:break-word;hyphens:auto;line-height:1.2;font-family:${styles.fontFamily};">${esc(element.content)}</div>`;
+        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:flex-start;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};word-wrap:break-word;overflow-wrap:break-word;hyphens:auto;line-height:1.2;font-family:${fontFamily};font-style:${fontStyle};text-decoration:${textDecoration};">${esc(element.content)}</div>`;
       }
     }).join('\n');
     
@@ -1097,6 +1179,44 @@ ${elementsHtml}
                     <span className="text-sm font-medium text-gray-700">Centrar texto</span>
                   </label>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Fuente</label>
+                  <select
+                    value={styles.nameFontFamily}
+                    onChange={(e) => updateStyle('nameFontFamily', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Estilo</label>
+                  <select
+                    value={styles.nameFontStyle}
+                    onChange={(e) => updateStyle('nameFontStyle', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="italic">Cursiva</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Decoración</label>
+                  <select
+                    value={styles.nameTextDecoration}
+                    onChange={(e) => updateStyle('nameTextDecoration', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Ninguna</option>
+                    <option value="underline">Subrayado</option>
+                    <option value="line-through">Tachado</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1160,6 +1280,44 @@ ${elementsHtml}
                     <span className="text-sm font-medium text-gray-700">Centrar texto</span>
                   </label>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Fuente</label>
+                  <select
+                    value={styles.companyFontFamily}
+                    onChange={(e) => updateStyle('companyFontFamily', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Estilo</label>
+                  <select
+                    value={styles.companyFontStyle}
+                    onChange={(e) => updateStyle('companyFontStyle', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="italic">Cursiva</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Decoración</label>
+                  <select
+                    value={styles.companyTextDecoration}
+                    onChange={(e) => updateStyle('companyTextDecoration', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Ninguna</option>
+                    <option value="underline">Subrayado</option>
+                    <option value="line-through">Tachado</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1214,6 +1372,44 @@ ${elementsHtml}
                     <span className="text-sm font-medium text-gray-700">Centrar texto</span>
                   </label>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Fuente</label>
+                  <select
+                    value={styles.locationFontFamily}
+                    onChange={(e) => updateStyle('locationFontFamily', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Estilo</label>
+                  <select
+                    value={styles.locationFontStyle}
+                    onChange={(e) => updateStyle('locationFontStyle', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="italic">Cursiva</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Decoración</label>
+                  <select
+                    value={styles.locationTextDecoration}
+                    onChange={(e) => updateStyle('locationTextDecoration', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Ninguna</option>
+                    <option value="underline">Subrayado</option>
+                    <option value="line-through">Tachado</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1263,6 +1459,44 @@ ${elementsHtml}
                     />
                     <span className="text-sm font-medium text-gray-700">Centrar texto</span>
                   </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Fuente</label>
+                  <select
+                    value={styles.ticketFontFamily}
+                    onChange={(e) => updateStyle('ticketFontFamily', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Estilo</label>
+                  <select
+                    value={styles.ticketFontStyle}
+                    onChange={(e) => updateStyle('ticketFontStyle', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="italic">Cursiva</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-gray-900">Decoración</label>
+                  <select
+                    value={styles.ticketTextDecoration}
+                    onChange={(e) => updateStyle('ticketTextDecoration', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">Ninguna</option>
+                    <option value="underline">Subrayado</option>
+                    <option value="line-through">Tachado</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1491,6 +1725,9 @@ ${elementsHtml}
                       fontWeight: element.fontWeight || 'normal',
                       color: element.color || '#000000',
                       textAlign: element.textAlign || 'left',
+                      fontFamily: element.fontFamily || styles.fontFamily,
+                      fontStyle: element.fontStyle || 'normal',
+                      textDecoration: element.textDecoration || 'none',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: element.textAlign === 'center' ? 'center' : 'flex-start'
