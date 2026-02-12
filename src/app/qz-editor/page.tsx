@@ -658,8 +658,15 @@ export default function QZEditor() {
     };
     setStyles(mergedStyles);
 
-    // Asegurar que siempre haya un elemento location
-    const existingElements = config.elements.map((el: any) => ({ ...el, selected: false }));
+    // Asegurar que siempre haya un elemento location y migrar propiedades faltantes
+    const existingElements = config.elements.map((el: any) => ({ 
+      ...el, 
+      selected: false,
+      // Migrar propiedades nuevas que pueden no existir en configuraciones antiguas
+      fontFamily: el.fontFamily ?? styles.fontFamily ?? 'Arial',
+      fontStyle: el.fontStyle ?? 'normal',
+      textDecoration: el.textDecoration ?? 'none'
+    }));
     const hasLocation = existingElements.some((el: any) => el.type === 'location');
 
     let finalElements = existingElements;
@@ -918,11 +925,32 @@ export default function QZEditor() {
         const fontWeight = element.fontWeight || 400;
         const color = element.color || '#000000';
         const textAlign = element.textAlign || 'left';
-        const fontFamily = element.fontFamily || styles.fontFamily;
-        const fontStyle = element.fontStyle || 'normal';
-        const textDecoration = element.textDecoration || 'none';
+        const fontFamily = element.fontFamily || styles.fontFamily || 'Arial';
+        const fontStyle = element.fontStyle === 'italic' ? 'italic' : 'normal';
+        const textDecoration = element.textDecoration === 'underline' ? 'underline' : element.textDecoration === 'line-through' ? 'line-through' : 'none';
         
-        return `      <div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};display:flex;align-items:flex-start;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};word-wrap:break-word;overflow-wrap:break-word;hyphens:auto;line-height:1.2;font-family:${fontFamily};font-style:${fontStyle};text-decoration:${textDecoration};">${esc(element.content)}</div>`;
+        // Build container style (positioning only)
+        const containerStyle = `position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;`;
+        
+        // Build text style with basic font properties
+        let textStyle = `font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};font-family:'${fontFamily}',Arial,sans-serif;font-style:${fontStyle};`;
+        if (textDecoration !== 'none') {
+          textStyle += `text-decoration:${textDecoration};`;
+        }
+        
+        // Wrap content with appropriate HTML elements for better compatibility
+        let contentHtml = esc(element.content);
+        if (fontStyle === 'italic') {
+          contentHtml = `<i>${contentHtml}</i>`;
+        }
+        if (textDecoration === 'underline') {
+          contentHtml = `<u>${contentHtml}</u>`;
+        } else if (textDecoration === 'line-through') {
+          contentHtml = `<s>${contentHtml}</s>`;
+        }
+        
+        // Container for layout, span for text styling
+        return `      <div style="${containerStyle}display:flex;align-items:flex-start;justify-content:${textAlign === 'center' ? 'center' : 'flex-start'};"><span style="${textStyle}word-wrap:break-word;overflow-wrap:break-word;line-height:1.2;">${contentHtml}</span></div>`;
       }
     }).join('\n');
     
@@ -978,6 +1006,17 @@ ${elementsHtml}
       
       // Create a custom print function with our dynamic styles
       const html = generateHTML();
+      
+      // Debug: log first text element to verify styles
+      const firstTextElement = elements.find(el => el.type !== 'logo');
+      if (firstTextElement) {
+        console.log('Elemento a imprimir:', {
+          type: firstTextElement.type,
+          fontStyle: firstTextElement.fontStyle,
+          textDecoration: firstTextElement.textDecoration,
+          fontFamily: firstTextElement.fontFamily
+        });
+      }
       
       const cfg = window.qz.configs.create(selectedPrinter, {
         units: 'mm',
